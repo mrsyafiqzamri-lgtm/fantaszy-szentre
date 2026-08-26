@@ -18,6 +18,7 @@ const state = {
   fixtures: [],
   projectionData: null,
   accuracy: null,
+  backtest: null,
   meta: null,
   players: [],
   events: [],
@@ -153,6 +154,8 @@ function enrichPlayers() {
       captainScore: model?.captain_score ?? xp[0],
       value4: model?.value_4gw ?? (xp4 / Math.max(3.5, Number(p.now_cost || 45)/10)),
       fixturesXP: model?.fixtures || [],
+      xpFirstHalf: model?.xp_first_half || xp,
+      fixturesFirstHalf: model?.fixtures_first_half || model?.fixtures || [],
       components: model?.components_gw1 || {},
       netTransfers: Number(p.transfers_in_event || 0) - Number(p.transfers_out_event || 0),
     };
@@ -217,13 +220,39 @@ function accuracyMarkup() {
     return `<div class="card">
       <div class="stat-label">Model Audit</div>
       <div class="stat-value">GW${state.nextEvents[0]?.id || '—'}</div>
-      <div class="stat-note">First pre-deadline SZxP 2.0 snapshot is being tracked.</div>
+      <div class="stat-note">First genuine pre-deadline SZxP snapshot is being tracked.</div>
     </div>`;
   }
   return `<div class="card">
     <div class="stat-label">Model MAE</div>
     <div class="stat-value">${fmt(summary.average_relevant_mae,2)}</div>
     <div class="stat-note">${summary.gameweeks_scored} GW scored · lower is better</div>
+  </div>`;
+}
+
+
+function gw1BacktestMarkup() {
+  const bt=state.backtest;
+  if(!bt?.teams?.length) return '';
+  const names=Object.fromEntries(portfolio.map(t=>[t.id,t.name]));
+  const rows=bt.teams.filter(x=>!x.error).map(x=>{
+    const delta=Number(x.actual_minus_szxp||0);
+    return `<tr>
+      <td><b>${esc(names[x.entry_id]||x.entry_id)}</b></td>
+      <td>${fmt(x.retrospective_szxp)}</td>
+      <td class="xp">${fmt(x.actual_points,0)}</td>
+      <td class="${delta>=0?'delta-up':'delta-down'}">${delta>=0?'+':''}${fmt(delta)}</td>
+      <td>${x.active_chip?esc(chipAlias(x.active_chip)):'—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="section card">
+    <div class="section-head"><h2>GW1 SZxP vs Actual</h2><span class="stat-note">retrospective fit check</span></div>
+    <div class="notice warn">This GW1 number is a backcast created after GW1 using post-GW1 data, so it contains hindsight leakage. It is useful for comparison, but it is NOT counted as genuine prediction accuracy. True locked accuracy starts from GW2.</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Team</th><th>GW1 SZxP</th><th>Actual</th><th>Actual − SZxP</th><th>Chip</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="model-note">Player-level retrospective MAE: ${fmt(bt.player_relevant_mae,2)}. Lower is better, but this GW1 figure is not a clean out-of-sample test.</p>
   </div>`;
 }
 
@@ -256,6 +285,8 @@ function renderOverview() {
       ${accuracyMarkup()}
     </div>
 
+    ${gw1BacktestMarkup()}
+
     <div class="section grid two">
       <div class="card">
         <div class="section-head"><h2>Captaincy</h2><button class="link-button" data-go="players">All players</button></div>
@@ -287,7 +318,7 @@ function renderOverview() {
       </div>
 
       <div class="card">
-        <div class="section-head"><h2>SZxP 2.0</h2><span class="stat-note">${state.players.length} players</span></div>
+        <div class="section-head"><h2>SZxP 2.1</h2><span class="stat-note">${state.players.length} players</span></div>
         <p class="subtext">Expected minutes + shrunk xG/xA + team attack/defence strength + clean-sheet probability + saves + bonus + defensive contributions when available + next-GW official FPL calibration.</p>
         <div class="notice">Penalty and set-piece bonuses are deliberately excluded until the role is independently verified. We would rather under-model than invent data.</div>
         <div class="model-note">Before every deadline, GitHub saves the latest projection snapshot. After that Gameweek finishes, the model records MAE, bias and correlation so we can calibrate SZxP using actual evidence.</div>
@@ -320,7 +351,7 @@ function renderPlayers() {
     <div class="hero">
       <div class="eyebrow">Player Szentre</div>
       <h1>Every player. One projection table.</h1>
-      <p class="subtext">Full FPL pool ranked by SZxP 2.0. Switch between next-GW, four-GW, value and captaincy views.</p>
+      <p class="subtext">Full FPL pool ranked by SZxP 2.1. Switch between next-GW, four-GW, value and captaincy views.</p>
     </div>
     <div class="controls">
       <input class="input" id="playerSearch" placeholder="Search player or club…" value="${esc(state.filters.q)}">
@@ -365,12 +396,13 @@ async function loadPortfolio() {
   const gw = state.publishedGW;
   state.teamData = await Promise.all(portfolio.map(async t => {
     try {
-      const [entry,picks,history] = await Promise.all([
+      const [entry,picks,history,transfers] = await Promise.all([
         fetchJSON(`/entry/${t.id}/`),
         fetchJSON(`/entry/${t.id}/event/${gw}/picks/`),
-        fetchJSON(`/entry/${t.id}/history/`)
+        fetchJSON(`/entry/${t.id}/history/`),
+        fetchJSON(`/entry/${t.id}/transfers/`)
       ]);
-      return {...t, entry, picks, history, ok:true};
+      return {...t, entry, picks, history, transfers, ok:true};
     } catch(e) {
       return {...t, ok:false,error:e.message};
     }
@@ -421,52 +453,326 @@ function pickMetaMap(td) {
   return Object.fromEntries((td.picks?.picks || []).map(x=>[x.element,x]));
 }
 
-function clubCounts(players, excludeId=null) {
-  const counts = {};
-  players.filter(p=>p.id!==excludeId).forEach(p=>counts[p.team]=(counts[p.team]||0)+1);
-  return counts;
+function halfEventIds() {
+  return state.projectionData?.first_half_event_ids || state.nextEvents.map(e=>e.id);
 }
 
-function bestCandidateMove(td) {
-  if (!td.ok) return null;
-  const proj = teamProjection(td);
-  const owned = new Set(proj.players.map(p=>p.id));
-  const pickMap = pickMetaMap(td);
-  const bank = Number(td.picks?.entry_history?.bank || 0);
+function xpAt(p, gw) {
+  const ids = halfEventIds();
+  const idx = ids.indexOf(Number(gw));
+  if (idx >= 0 && p.xpFirstHalf?.[idx] != null) return Number(p.xpFirstHalf[idx] || 0);
+  const nextIdx = state.nextEvents.findIndex(e=>e.id===Number(gw));
+  return nextIdx >= 0 ? Number(p.xp[nextIdx] || 0) : 0;
+}
+
+function fixtureAt(p, gw) {
+  const ids = halfEventIds();
+  const idx = ids.indexOf(Number(gw));
+  return idx >= 0 ? (p.fixturesFirstHalf?.[idx] || '—') : '—';
+}
+
+function legalBestXIAt(players, gw) {
+  const groups = {
+    GKP: players.filter(p=>p.pos==='GKP').sort((a,b)=>xpAt(b,gw)-xpAt(a,gw)),
+    DEF: players.filter(p=>p.pos==='DEF').sort((a,b)=>xpAt(b,gw)-xpAt(a,gw)),
+    MID: players.filter(p=>p.pos==='MID').sort((a,b)=>xpAt(b,gw)-xpAt(a,gw)),
+    FWD: players.filter(p=>p.pos==='FWD').sort((a,b)=>xpAt(b,gw)-xpAt(a,gw)),
+  };
   let best = null;
-
-  for (const out of proj.players) {
-    const selling = Number(pickMap[out.id]?.selling_price ?? out.now_cost);
-    const budget = selling + bank;
-    const counts = clubCounts(proj.players, out.id);
-
-    const candidates = state.players.filter(p =>
-      p.element_type === out.element_type &&
-      !owned.has(p.id) &&
-      p.now_cost <= budget &&
-      p.xmins >= 55 &&
-      p.status !== 'u' &&
-      (counts[p.team] || 0) < 3
-    );
-
-    for (const incoming of candidates) {
-      const gain4 = incoming.xp4 - out.xp4;
-      const gain1 = incoming.xp[0] - out.xp[0];
-      const urgent = out.xmins < 45 || ['i','s','u'].includes(out.status);
-      const score = gain4 + (urgent ? 3.0 : 0) + Math.max(0,gain1)*0.25;
-      if (!best || score > best.score) {
-        best = {out,incoming,gain4,gain1,budget,urgent,score};
+  for (let d=3; d<=5; d++) {
+    for (let m=2; m<=5; m++) {
+      for (let f=1; f<=3; f++) {
+        if (d+m+f !== 10) continue;
+        if (groups.DEF.length<d || groups.MID.length<m || groups.FWD.length<f || !groups.GKP.length) continue;
+        const xi = [groups.GKP[0], ...groups.DEF.slice(0,d), ...groups.MID.slice(0,m), ...groups.FWD.slice(0,f)];
+        const total = xi.reduce((sum,p)=>sum+xpAt(p,gw),0);
+        if (!best || total > best.total) best={xi,total,formation:`${d}-${m}-${f}`};
       }
     }
   }
-  return best;
+  return best || {xi:players.slice(0,11),total:0,formation:'—'};
 }
 
-function actionForMove(move) {
-  if (!move) return 'ROLL';
-  if (move.urgent) return 'TRANSFER';
-  if (move.gain4 >= 4.0) return 'TRANSFER';
-  return 'ROLL';
+function teamSquad(td) {
+  const ids = td.picks?.picks?.map(x=>x.element) || [];
+  return ids.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
+}
+
+function teamProjection(td) {
+  if (!td.ok) return {xp1:0,captain:null,vice:null,players:[],xi:[]};
+  const players = teamSquad(td);
+  const gw = state.nextEvents[0]?.id;
+  const best = legalBestXIAt(players,gw);
+  const captainRank = [...best.xi].sort((a,b)=>xpAt(b,gw)-xpAt(a,gw));
+  const captain = captainRank[0];
+  const vice = captainRank[1];
+  return {
+    players,
+    xi:best.xi,
+    formation:best.formation,
+    captain,
+    vice,
+    xp1:best.total + (captain?xpAt(captain,gw):0)
+  };
+}
+
+function chipAlias(name='') {
+  const n=String(name).toLowerCase();
+  if (['bboost','bench_boost','benchboost'].includes(n)) return 'BB';
+  if (['3xc','triple_captain','triplecaptain'].includes(n)) return 'TC';
+  if (['freehit','free_hit'].includes(n)) return 'FH';
+  if (['wildcard','wc'].includes(n)) return 'WC';
+  return n.toUpperCase();
+}
+
+function usedFirstHalfChips(td) {
+  const out={};
+  for (const c of (td.history?.chips || [])) {
+    const gw=Number(c.event || c.gameweek || 0);
+    if (gw>=1 && gw<=19) out[chipAlias(c.name)] = gw;
+  }
+  return out;
+}
+
+function globalBestXIAt(gw) {
+  const pool=state.players.filter(p=>p.xmins>=50 && p.status!=='u');
+  return legalBestXIAt(pool,gw);
+}
+
+function wildcardDebtAt(players, gw) {
+  const ids=halfEventIds();
+  const start=ids.indexOf(Number(gw));
+  if (start<0) return 0;
+  const window=ids.slice(start,start+4);
+  let debt=0;
+  for (const out of players) {
+    const outScore=window.reduce((s,g)=>s+xpAt(out,g),0);
+    const priceCap=Number(out.now_cost||0)+5; // allow £0.5m structural reshuffle
+    const best=state.players
+      .filter(p=>p.element_type===out.element_type && p.id!==out.id && p.now_cost<=priceCap && p.xmins>=55 && p.status!=='u')
+      .sort((a,b)=>window.reduce((s,g)=>s+xpAt(b,g),0)-window.reduce((s,g)=>s+xpAt(a,g),0))[0];
+    if (best) {
+      const inScore=window.reduce((s,g)=>s+xpAt(best,g),0);
+      debt += Math.max(0,inScore-outScore);
+    }
+  }
+  return debt;
+}
+
+function firstHalfChipPlan(td) {
+  const players=teamSquad(td);
+  const used=usedFirstHalfChips(td);
+  const gws=halfEventIds().filter(g=>g<=19);
+  const plan={used};
+
+  if (!used.BB) {
+    const opts=gws.map(gw=>{
+      const xi=legalBestXIAt(players,gw);
+      const total15=players.reduce((s,p)=>s+xpAt(p,gw),0);
+      const bench=Math.max(0,total15-xi.total);
+      const risky=players.filter(p=>p.xmins<50).length;
+      return {chip:'BB',gw,benefit:bench-risky*.35,raw:bench,detail:`bench +${fmt(bench)} xP`};
+    }).sort((a,b)=>b.benefit-a.benefit);
+    plan.BB=opts[0];
+  }
+
+  if (!used.TC) {
+    const opts=[];
+    for (const gw of gws) {
+      for (const p of players) {
+        const x=xpAt(p,gw);
+        opts.push({chip:'TC',gw,benefit:x,raw:x,player:p,detail:`${p.web_name} +${fmt(x)} xP`});
+      }
+    }
+    opts.sort((a,b)=>b.benefit-a.benefit);
+    plan.TC=opts[0];
+  }
+
+  if (!used.FH) {
+    const opts=gws.map(gw=>{
+      const current=legalBestXIAt(players,gw);
+      const ideal=globalBestXIAt(gw);
+      const gap=Math.max(0,ideal.total-current.total);
+      const blanks=players.filter(p=>fixtureAt(p,gw)==='BLANK').length;
+      return {chip:'FH',gw,benefit:gap+blanks*2.5,raw:gap,detail:`one-week gap ${fmt(gap)} xP${blanks?` · ${blanks} blanks`:''}`};
+    }).sort((a,b)=>b.benefit-a.benefit);
+    plan.FH=opts[0];
+  }
+
+  if (!used.WC) {
+    const reviewGws=[4,6,10,14,18].filter(g=>gws.includes(g));
+    const source=reviewGws.length?reviewGws:gws;
+    const opts=source.map(gw=>{
+      const debt=wildcardDebtAt(players,gw);
+      const flags=players.filter(p=>p.xmins<50 || p.status!=='a').length;
+      return {chip:'WC',gw,benefit:debt+flags*1.5,raw:debt,detail:`4GW transfer debt ${fmt(debt)} xP`};
+    }).sort((a,b)=>b.benefit-a.benefit);
+    plan.WC=opts[0];
+  }
+
+  const multipliers = td.type.includes('Weekly') ? {TC:1.18,FH:1.15,BB:1.05,WC:.90}
+    : td.type.includes('Cup') ? {TC:1.12,FH:1.15,BB:1.00,WC:.95}
+    : td.type.includes('Monthly') ? {TC:1.10,FH:1.00,BB:1.10,WC:.95}
+    : {TC:1.00,FH:.92,BB:1.03,WC:1.06};
+
+  const options=['BB','TC','FH','WC'].map(k=>plan[k]).filter(Boolean);
+  options.forEach(x=>x.portfolioScore=x.benefit*(multipliers[x.chip]||1));
+  options.sort((a,b)=>b.portfolioScore-a.portfolioScore);
+  plan.best=options[0] || null;
+  return plan;
+}
+
+function latestPurchasePrice(td,p) {
+  const ins=(td.transfers||[])
+    .filter(t=>Number(t.element_in)===Number(p.id))
+    .sort((a,b)=>Number(b.event||0)-Number(a.event||0));
+  if (ins.length && ins[0].element_in_cost != null) return Number(ins[0].element_in_cost);
+  return Number(p.now_cost||0)-Number(p.cost_change_start||0);
+}
+
+function sellingPrice(td,p) {
+  const cp=Number(p.now_cost||0);
+  const pp=latestPurchasePrice(td,p);
+  if (cp<=pp) return cp;
+  return pp + Math.floor((cp-pp)/2);
+}
+
+function inferredFreeTransfers(td) {
+  const nextGw=Number(state.nextEvents[0]?.id || 2);
+  let ft=1;
+  const transfers=td.transfers||[];
+  const chips=td.history?.chips||[];
+
+  for (let gw=2; gw<nextGw; gw++) {
+    const chip=chips.find(c=>Number(c.event)===gw);
+    const alias=chipAlias(chip?.name||'');
+    const n=transfers.filter(t=>Number(t.event)===gw).length;
+    if (alias==='WC' || alias==='FH') {
+      ft=Math.min(5,ft); // current-GW FT is consumed by WC/FH; previously banked FTs are retained
+    } else {
+      ft=Math.min(5,Math.max(0,ft-n)+1);
+    }
+  }
+  return ft;
+}
+
+function squadScore(ids, mode='4gw') {
+  const players=ids.map(id=>state.players.find(p=>p.id===id)).filter(Boolean);
+  const gws=state.nextEvents.slice(0,4).map(e=>e.id);
+  const weights=mode==='gw1'?[1]:[1,.92,.84,.76];
+  let score=0;
+  gws.slice(0,weights.length).forEach((gw,i)=>{
+    const best=legalBestXIAt(players,gw);
+    const cap=[...best.xi].sort((a,b)=>xpAt(b,gw)-xpAt(a,gw))[0];
+    score += (best.total + (cap?xpAt(cap,gw):0))*weights[i];
+  });
+  return score;
+}
+
+function clubCountIds(ids) {
+  const out={};
+  ids.forEach(id=>{
+    const p=state.players.find(x=>x.id===id);
+    if(p) out[p.team]=(out[p.team]||0)+1;
+  });
+  return out;
+}
+
+function optimiseTransferScenarios(td, mode='4gw') {
+  const squad=teamSquad(td);
+  const originalIds=squad.map(p=>p.id);
+  const bank=Number(td.picks?.entry_history?.bank||0);
+  const ft=inferredFreeTransfers(td);
+  const baselineScore=squadScore(originalIds,mode);
+  const scoreCache=new Map();
+  const scoreIds=ids=>{
+    const key=ids.slice().sort((a,b)=>a-b).join(',');
+    if(!scoreCache.has(key)) scoreCache.set(key,squadScore(ids,mode));
+    return scoreCache.get(key);
+  };
+
+  let beam=[{
+    ids:originalIds,
+    bank,
+    moves:[],
+    remaining:new Set(originalIds),
+    gross:baselineScore
+  }];
+  const scenarios=[{k:0,hit:0,gross:baselineScore,gain:0,netGain:0,moves:[],bank,ft}];
+  const BEAM=18;
+
+  for(let k=1;k<=15;k++){
+    const children=[];
+    for(const st of beam){
+      const owned=new Set(st.ids);
+      const clubs=clubCountIds(st.ids);
+      const sellable=[...st.remaining]
+        .map(id=>state.players.find(p=>p.id===id))
+        .filter(Boolean)
+        .sort((a,b)=>(a.xp4 + a.xmins/100)-(b.xp4 + b.xmins/100))
+        .slice(0,5);
+
+      for(const out of sellable){
+        const sp=sellingPrice(td,out);
+        const budget=st.bank+sp;
+        const candidates=state.players.filter(inc=>
+          inc.element_type===out.element_type &&
+          !owned.has(inc.id) &&
+          inc.now_cost<=budget &&
+          inc.xmins>=45 &&
+          inc.status!=='u' &&
+          ((clubs[inc.team]||0) - (inc.team===out.team?1:0)) < 3
+        ).sort((a,b)=>{
+          const av=mode==='gw1'?a.xp[0]:a.xp4;
+          const bv=mode==='gw1'?b.xp[0]:b.xp4;
+          return bv-av;
+        }).slice(0,8);
+
+        for(const inc of candidates){
+          const ids=st.ids.map(id=>id===out.id?inc.id:id);
+          const remaining=new Set(st.remaining);
+          remaining.delete(out.id);
+          const gross=scoreIds(ids);
+          children.push({
+            ids,
+            bank:budget-inc.now_cost,
+            moves:[...st.moves,{out,inc,sell:sp,buy:inc.now_cost}],
+            remaining,
+            gross
+          });
+        }
+      }
+    }
+
+    if(!children.length) break;
+    const dedup=new Map();
+    for(const c of children){
+      const key=c.ids.slice().sort((a,b)=>a-b).join(',');
+      const prev=dedup.get(key);
+      if(!prev || c.gross>prev.gross) dedup.set(key,c);
+    }
+    beam=[...dedup.values()].sort((a,b)=>b.gross-a.gross).slice(0,BEAM);
+    const best=beam[0];
+    const hit=4*Math.max(0,k-ft);
+    const gain=best.gross-baselineScore;
+    scenarios.push({
+      k,hit,gross:best.gross,gain,netGain:gain-hit,moves:best.moves,bank:best.bank,ft
+    });
+  }
+
+  const best=[...scenarios].sort((a,b)=>b.netGain-a.netGain)[0];
+  return {scenarios,best,ft,baselineScore};
+}
+
+function scenarioLabel(s) {
+  if(s.k===0) return `ROLL → ${Math.min(5,s.ft+1)} FT next GW`;
+  if(s.hit===0) return `${s.k} transfer${s.k>1?'s':''} · FREE`;
+  return `${s.k} transfers · -${s.hit}`;
+}
+
+function movesText(moves) {
+  if(!moves?.length) return 'Hold squad';
+  return moves.map(m=>`${m.out.web_name} → ${m.inc.web_name}`).join(' · ');
 }
 
 function renderTeams() {
@@ -474,10 +780,18 @@ function renderTeams() {
     if (!td.ok) return `<div class="card team-card"><div class="team-title">${esc(td.name)}</div><div class="team-meta">Entry ${td.id}</div><div class="notice warn" style="margin-top:14px">Could not load entry: ${esc(td.error)}</div></div>`;
 
     const p = teamProjection(td);
-    const move = bestCandidateMove(td);
+    const chips=firstHalfChipPlan(td);
     const gwPts = td.picks?.entry_history?.points ?? '—';
     const or = td.picks?.entry_history?.overall_rank;
-    const action = actionForMove(move);
+    const ft=inferredFreeTransfers(td);
+    const bestChip=chips.best;
+    const used=chips.used;
+
+    const chipLines=['BB','TC','FH','WC'].map(k=>{
+      if(used[k]) return `<strong>${k}:</strong> USED GW${used[k]}`;
+      const x=chips[k];
+      return x ? `<strong>${k}:</strong> GW${x.gw} · ${esc(x.detail)}` : `<strong>${k}:</strong> —`;
+    }).join('<br>');
 
     return `<div class="card team-card">
       <div class="team-title">${esc(td.name)}</div>
@@ -485,12 +799,13 @@ function renderTeams() {
       <div class="team-numbers">
         <div class="mini"><span>GW${state.publishedGW}</span><b>${gwPts}</b></div>
         <div class="mini"><span>Next XI xP</span><b>${fmt(p.xp1)}</b></div>
-        <div class="mini"><span>Formation</span><b>${p.formation}</b></div>
+        <div class="mini"><span>Baseline FT</span><b>${ft}</b></div>
       </div>
       <div class="action-line">
-        <strong>CAPTAIN:</strong> ${p.captain ? `${esc(p.captain.web_name)} ${fmt(p.captain.xp[0])}` : '—'}<br>
-        <strong>VC:</strong> ${p.vice ? `${esc(p.vice.web_name)} ${fmt(p.vice.xp[0])}` : '—'}<br>
-        <strong>MODEL MOVE:</strong> ${move ? `${action} · ${esc(move.out.web_name)} → ${esc(move.incoming.web_name)} (${move.gain4>=0?'+':''}${fmt(move.gain4)} 4GW xP)` : 'ROLL'}<br>
+        <strong>CAPTAIN:</strong> ${p.captain ? `${esc(p.captain.web_name)} ${fmt(xpAt(p.captain,state.nextEvents[0]?.id))}` : '—'}<br>
+        <strong>VC:</strong> ${p.vice ? `${esc(p.vice.web_name)} ${fmt(xpAt(p.vice,state.nextEvents[0]?.id))}` : '—'}<br>
+        <strong>BEST FIRST-HALF CHIP:</strong> ${bestChip ? `${bestChip.chip} · GW${bestChip.gw} · ${esc(bestChip.detail)}` : 'All modelled chips used'}<br>
+        ${chipLines}<br>
         <strong>OR:</strong> ${or ? Number(or).toLocaleString() : '—'}<br>
         <strong>OBJECTIVE:</strong> ${esc(td.objective)}
       </div>
@@ -501,43 +816,71 @@ function renderTeams() {
     <div class="hero">
       <div class="eyebrow">My TeamSZ</div>
       <h1>Nine teams, one control room.</h1>
-      <p class="subtext">The model optimises a legal starting XI and captain from the latest publicly locked squad.</p>
+      <p class="subtext">Legal XI projections, baseline free-transfer reconstruction and a first-half chip plan tailored to each team's objective.</p>
     </div>
-    <div class="notice">Pre-deadline transfers remain private. Treat this as the current public baseline until your latest squad is confirmed.</div>
+    <div class="notice">Chip planner respects chips already used. 2026/27 has one Wildcard, Free Hit, Triple Captain and Bench Boost in GW1–19, then a fresh set from GW20. Only one chip can be used in a Gameweek. Current-GW private transfers remain invisible until the deadline.</div>
     <div class="section grid three">${cards}</div>`;
 }
 
 function renderTransfers() {
-  const rows = state.teamData.map(td => {
-    const move = bestCandidateMove(td);
-    if (!td.ok || !move) return null;
-    const action = actionForMove(move);
-    const urgency = move.urgent || move.gain4>=6 ? 'High' : move.gain4>=3 ? 'Medium' : 'Low';
-    return {td,move,action,urgency};
-  }).filter(Boolean).sort((a,b)=>b.move.score-a.move.score);
+  const okTeams=state.teamData.filter(td=>td.ok);
+  if(!okTeams.length) return;
+  const selectedId=Number(localStorage.getItem('fs:transferTeam') || okTeams[0].id);
+  const td=okTeams.find(t=>t.id===selectedId) || okTeams[0];
+  const result=optimiseTransferScenarios(td,'4gw');
+  const best=result.best;
+  const used=usedFirstHalfChips(td);
+  const nextGw=state.nextEvents[0]?.id;
+
+  const rows=result.scenarios.map(s=>`
+    <tr class="${s===best?'best-row':''}">
+      <td>${s.k}</td>
+      <td>${scenarioLabel(s)}</td>
+      <td>${s.hit?`-${s.hit}`:'0'}</td>
+      <td class="${s.netGain>0?'xp':''}">${s.gain>=0?'+':''}${fmt(s.gain)}</td>
+      <td class="${s.netGain>0?'xp':''}">${s.netGain>=0?'+':''}${fmt(s.netGain)}</td>
+      <td style="white-space:normal;min-width:300px">${esc(movesText(s.moves))}</td>
+    </tr>`).join('');
+
+  const chipPlan=firstHalfChipPlan(td);
+  const wildcard=chipPlan.WC && !used.WC ? `WC window: GW${chipPlan.WC.gw} · ${chipPlan.WC.detail}` : `WC used GW${used.WC||'—'}`;
+  const freehit=chipPlan.FH && !used.FH ? `FH window: GW${chipPlan.FH.gw} · ${chipPlan.FH.detail}` : `FH used GW${used.FH||'—'}`;
 
   $('#transfers').innerHTML = `
     <div class="hero">
       <div class="eyebrow">Transfer Szentre</div>
-      <h1>Projected gain, not last-week chasing.</h1>
-      <p class="subtext">The engine uses each locked squad's public selling price, bank, position and three-per-club constraint.</p>
+      <h1>Every legal transfer-count route.</h1>
+      <p class="subtext">The optimiser evaluates 0 through 15 squad transfers, free-transfer usage, every -4 hit step, plus Wildcard and Free Hit as separate chip routes.</p>
     </div>
-    <div class="notice warn">Free transfers and private moves made after the last deadline are not publicly visible. “Net after -4” is shown only as a break-even reference, not an instruction to take a hit.</div>
+
+    <div class="controls">
+      <select class="select" id="transferTeamSelect">
+        ${okTeams.map(t=>`<option value="${t.id}" ${t.id===td.id?'selected':''}>${esc(t.name)}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="grid stats">
+      <div class="card"><div class="stat-label">Baseline FT</div><div class="stat-value">${result.ft}</div><div class="stat-note">Reconstructed from public locked transfer history</div></div>
+      <div class="card"><div class="stat-label">Bank</div><div class="stat-value">£${fmt(Number(td.picks?.entry_history?.bank||0)/10)}m</div><div class="stat-note">At last locked deadline</div></div>
+      <div class="card"><div class="stat-label">Best Route</div><div class="stat-value">${best.k===0?'ROLL':best.k+'T'}</div><div class="stat-note">${scenarioLabel(best)} · net ${best.netGain>=0?'+':''}${fmt(best.netGain)} xP</div></div>
+      <div class="card"><div class="stat-label">Next GW</div><div class="stat-value">GW${nextGw}</div><div class="stat-note">${esc(td.objective)}</div></div>
+    </div>
+
+    <div class="notice">${esc(wildcard)}. ${esc(freehit)}. Bench Boost and Triple Captain do not remove normal transfer costs and are handled in My Teams chip planning.</div>
+    <div class="notice warn">The public API cannot see transfers you make before the current deadline. These are exact for the latest publicly locked squad; if you have already made a private GW${nextGw} transfer, refresh the baseline manually after the deadline or use your latest squad screenshot with the copilot.</div>
+
     <div class="section table-wrap">
       <table>
-        <thead><tr><th>Team</th><th>Action</th><th>Out</th><th>In</th><th>GW+1 Gain</th><th>4GW Gain</th><th>After -4</th><th>Urgency</th></tr></thead>
-        <tbody>${rows.map(r=>`<tr>
-          <td><b>${esc(r.td.name)}</b><div class="team-code">${esc(r.td.objective)}</div></td>
-          <td><span class="badge ${r.action==='ROLL'?'watch':'buy'}">${r.action}</span></td>
-          <td>${esc(r.move.out.web_name)} · ${money(r.move.out.now_cost)}</td>
-          <td>${esc(r.move.incoming.web_name)} · ${money(r.move.incoming.now_cost)}</td>
-          <td class="${r.move.gain1>0?'xp':''}">${r.move.gain1>=0?'+':''}${fmt(r.move.gain1)}</td>
-          <td class="xp">${r.move.gain4>=0?'+':''}${fmt(r.move.gain4)}</td>
-          <td>${fmt(r.move.gain4-4)}</td>
-          <td><span class="badge ${r.urgency.toLowerCase()}">${r.urgency}</span></td>
-        </tr>`).join('')}</tbody>
+        <thead><tr><th>#T</th><th>Legal route</th><th>Hit</th><th>Gross 4GW gain</th><th>Net gain</th><th>Best modelled moves</th></tr></thead>
+        <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    <p class="model-note">FPL allows up to five stored free transfers. Extra transfers cost four points each. Selling prices use the public transfer history plus the FPL sell-on rule; Wildcard/Free Hit retain banked free transfers. Beam search is used to evaluate multi-transfer combinations without brute-forcing millions of squads.</p>`;
+
+  $('#transferTeamSelect').addEventListener('change',e=>{
+    localStorage.setItem('fs:transferTeam',e.target.value);
+    renderTransfers();
+  });
 }
 
 function renderMarket() {
@@ -596,11 +939,12 @@ async function init(force=false) {
   if (force) Object.keys(localStorage).filter(k=>k.startsWith('fs')).forEach(k=>localStorage.removeItem(k));
 
   try {
-    const [bootstrap,fixtures,projectionData,accuracy,meta] = await Promise.all([
+    const [bootstrap,fixtures,projectionData,accuracy,backtest,meta] = await Promise.all([
       fetchJSON('/bootstrap-static/',!force),
       fetchJSON('/fixtures/',!force),
       fetchLocal('./data/szxp.json',null,!force),
       fetchLocal('./data/accuracy.json',null,!force),
+      fetchLocal('./data/backtests/gw1.json',null,!force),
       fetchLocal('./data/meta.json',null,!force)
     ]);
 
@@ -608,6 +952,7 @@ async function init(force=false) {
     state.fixtures=fixtures;
     state.projectionData=projectionData;
     state.accuracy=accuracy;
+    state.backtest=backtest;
     state.meta=meta;
     state.events=bootstrap.events;
     state.teams=bootstrap.teams;
