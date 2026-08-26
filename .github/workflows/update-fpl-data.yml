@@ -7,6 +7,7 @@ on:
       - '.github/workflows/update-fpl-data.yml'
       - 'scripts/update_fpl_data.py'
       - 'data-adapter.js'
+      - 'app.js'
   schedule:
     - cron: '17 * * * *'
 
@@ -25,10 +26,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Fetch latest public FPL data
+      - name: Fetch FPL data and build SZxP 2.0
         run: python scripts/update_fpl_data.py
 
-      - name: Commit refreshed data
+      - name: Commit refreshed data and prediction snapshots
         run: |
           git config user.name "fantaszy-szentre-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -37,5 +38,5 @@ jobs:
             echo "No data changes"
             exit 0
           fi
-          git commit -m "Update FPL data"
+          git commit -m "Update FPL data and SZxP"
           git push
