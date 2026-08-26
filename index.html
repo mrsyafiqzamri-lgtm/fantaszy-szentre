@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Fantaszy Szentre</title>
+  <meta name="description" content="Fantaszy Szentre — Smarter Fantasy Decisions" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark">FS</div>
+        <div>
+          <div class="brand-name">Fantaszy Szentre</div>
+          <div class="brand-tagline">Smarter Fantasy Decisions</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="status-pill" id="apiStatus"><span class="dot"></span><span>Connecting</span></div>
+        <button class="icon-button" id="refreshBtn" aria-label="Refresh data">↻</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="overview" class="view active"></section>
+      <section id="players" class="view"></section>
+      <section id="teams" class="view"></section>
+      <section id="transfers" class="view"></section>
+      <section id="market" class="view"></section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button class="nav-item active" data-view="overview"><span>⌂</span><small>Home</small></button>
+      <button class="nav-item" data-view="players"><span>◫</span><small>Players</small></button>
+      <button class="nav-item" data-view="teams"><span>XI</span><small>My Teams</small></button>
+      <button class="nav-item" data-view="transfers"><span>⇄</span><small>Transfers</small></button>
+      <button class="nav-item" data-view="market"><span>↗</span><small>Market</small></button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
