@@ -45,6 +45,38 @@
   </div>
 
   <div id="toast" class="toast"></div>
+
+  <script>
+    (() => {
+      const nativeFetch = window.fetch.bind(window);
+      const FPL_ORIGIN = 'https://fantasy.premierleague.com/api';
+
+      window.fetch = async (input, init = {}) => {
+        const url = typeof input === 'string' ? input : input?.url;
+
+        if (!url || !url.startsWith(FPL_ORIGIN)) {
+          return nativeFetch(input, init);
+        }
+
+        try {
+          const direct = await nativeFetch(input, init);
+          if (direct.ok) return direct;
+        } catch (_) {
+          // Safari/GitHub Pages may block the direct FPL request because of CORS.
+        }
+
+        const proxyUrl =
+          'https://corsproxy.io/?url=' + encodeURIComponent(url);
+
+        return nativeFetch(proxyUrl, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+      };
+    })();
+  </script>
+
   <script src="app.js"></script>
 </body>
 </html>
