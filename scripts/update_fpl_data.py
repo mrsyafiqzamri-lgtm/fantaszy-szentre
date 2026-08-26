@@ -17,7 +17,7 @@ ENTRY_IDS = [
     132558, 128817, 137607, 130090
 ]
 
-MODEL_VERSION = "SZxP 2.0"
+MODEL_VERSION = "SZxP 2.1"
 
 # Conservative positional priors used to shrink tiny early-season samples.
 # They are not player ratings; observed xG/xA gradually takes over as minutes build.
@@ -96,14 +96,18 @@ def get_context(events):
 
     if next_event:
         next_events = [e for e in events if e["id"] >= next_event["id"]][:4]
+        half_end = 19 if next_event["id"] <= 19 else 38
+        first_half_events = [e for e in events if next_event["id"] <= e["id"] <= half_end]
     else:
         next_events = events[-4:]
+        first_half_events = next_events
 
     published = last_finished["id"] if last_finished else max(1, (next_event["id"] - 1 if next_event else 1))
     return {
         "now": now,
         "next_event": next_event,
         "next_events": next_events,
+        "first_half_events": first_half_events,
         "published_gw": published,
         "last_finished": last_finished,
     }
@@ -374,14 +378,12 @@ def build_projections(bootstrap, fixtures, context):
     elements = bootstrap.get("elements", [])
     team_map, avgs = team_strength_maps(teams)
 
-    next_events = context["next_events"]
-    event_ids = [e["id"] for e in next_events]
-
-    fixtures_by_event = {}
-    for event_id in event_ids:
-        fixtures_by_event[event_id] = [
-            f for f in fixtures if f.get("event") == event_id
-        ]
+    planning_events = context.get("first_half_events") or context["next_events"]
+    event_ids = [e["id"] for e in planning_events]
+    fixtures_by_event = {
+        event_id: [f for f in fixtures if f.get("event") == event_id]
+        for event_id in event_ids
+    }
 
     players = []
 
@@ -389,9 +391,9 @@ def build_projections(bootstrap, fixtures, context):
         games = team_games_played(p["team"], fixtures)
         xmins = expected_minutes(p, games)
         rates = player_rates(p)
-        xp = []
+        xp_half = []
+        fixture_labels_half = []
         component_gw1 = None
-        fixture_labels = []
 
         for horizon_idx, event_id in enumerate(event_ids):
             event_fixtures = [
@@ -400,8 +402,8 @@ def build_projections(bootstrap, fixtures, context):
             ]
 
             if not event_fixtures:
-                xp.append(0.0)
-                fixture_labels.append("BLANK")
+                xp_half.append(0.0)
+                fixture_labels_half.append("BLANK")
                 continue
 
             total = 0.0
@@ -419,8 +421,7 @@ def build_projections(bootstrap, fixtures, context):
                 opp = team_map[pred["opponent"]].get("short_name", str(pred["opponent"]))
                 labels.append(("H " if pred["home"] else "A ") + opp)
 
-            # FPL ep_next is useful as a calibration prior for the immediately upcoming GW,
-            # but no longer dominates the model as it did in V1.
+            # Official FPL ep_next is only a calibration prior for the immediately upcoming GW.
             if horizon_idx == 0 and len(event_fixtures) == 1:
                 ep = num(p.get("ep_next"))
                 if ep > 0:
@@ -428,17 +429,18 @@ def build_projections(bootstrap, fixtures, context):
                     official_weight = 0.38 if early_season else 0.25
                     total = (1 - official_weight) * total + official_weight * ep
 
-            # Availability is already represented in xMins. Hard-zero unavailable players.
             if availability_factor(p) <= 0:
                 total = 0.0
 
             total = clamp(total, 0, 18 * max(1, len(event_fixtures)))
-            xp.append(round(total, 2))
-            fixture_labels.append(" + ".join(labels))
+            xp_half.append(round(total, 2))
+            fixture_labels_half.append(" + ".join(labels))
 
             if horizon_idx == 0:
                 component_gw1 = {k: round(v, 2) for k, v in parts.items()}
 
+        xp = xp_half[:4]
+        fixture_labels = fixture_labels_half[:4]
         while len(xp) < 4:
             xp.append(0.0)
             fixture_labels.append("—")
@@ -463,12 +465,14 @@ def build_projections(bootstrap, fixtures, context):
             "element_type": p["element_type"],
             "xmins": xmins,
             "confidence": confidence,
-            "xp": xp[:4],
+            "xp": xp,
             "xp4": total4,
+            "xp_first_half": xp_half,
             "ceiling_gw1": ceiling,
             "captain_score": captain_score,
             "value_4gw": value4,
-            "fixtures": fixture_labels[:4],
+            "fixtures": fixture_labels,
+            "fixtures_first_half": fixture_labels_half,
             "rates": {k: round(v, 4) for k, v in rates.items()},
             "components_gw1": component_gw1 or {},
         })
@@ -476,17 +480,107 @@ def build_projections(bootstrap, fixtures, context):
     return {
         "model_version": MODEL_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "next_event_ids": event_ids,
+        "next_event_ids": [e["id"] for e in context["next_events"]],
+        "first_half_event_ids": event_ids,
         "published_gw": context["published_gw"],
         "players": players,
         "notes": [
             "Model estimates, not guarantees.",
-            "SZxP 2.0 uses xMins, shrunk xG/xA, FPL team attack/defence strength, venue, clean-sheet probability, saves, bonus and defensive-contribution data when exposed by the FPL API.",
+            "SZxP 2.1 adds first-half projections for chip planning and transfer scenario analysis.",
+            "SZxP uses xMins, shrunk xG/xA, FPL team attack/defence strength, venue, clean-sheet probability, saves, bonus and defensive-contribution data when exposed by the FPL API.",
             "Official FPL ep_next is used only as a calibration prior for the next Gameweek.",
             "Penalty and set-piece role bonuses are not added unless a role is independently verified."
         ]
     }
 
+
+def build_gw1_backcast(bootstrap, fixtures):
+    """Retrospective GW1 backcast.
+
+    IMPORTANT: This is not a genuine pre-deadline forecast because it uses the
+    current post-GW1 season data to estimate rates/xMins. It is useful as a
+    model-fit diagnostic only. Genuine accuracy tracking begins with locked
+    pre-deadline snapshots (GW2 onward for this project).
+    """
+    teams = bootstrap.get("teams", [])
+    elements = bootstrap.get("elements", [])
+    team_map, avgs = team_strength_maps(teams)
+    gw1_fixtures = [f for f in fixtures if f.get("event") == 1]
+    element_map = {p["id"]: p for p in elements}
+    predicted = {}
+
+    for p in elements:
+        games = team_games_played(p["team"], fixtures)
+        xmins = expected_minutes(p, games)
+        rates = player_rates(p)
+        fx = [f for f in gw1_fixtures if f.get("team_h") == p["team"] or f.get("team_a") == p["team"]]
+        total = 0.0
+        for f in fx:
+            total += predict_fixture(p, f, xmins, rates, team_map, avgs)["raw"]
+        if availability_factor(p) <= 0:
+            total = 0.0
+        predicted[p["id"]] = round(clamp(total, 0, 18 * max(1, len(fx))), 2)
+
+    live = get_json("/event/1/live/")
+    actual_player = {
+        e["id"]: num(e.get("stats", {}).get("total_points"))
+        for e in live.get("elements", [])
+    }
+
+    player_rows = []
+    for pid, pred in predicted.items():
+        p = element_map[pid]
+        player_rows.append({
+            "id": pid,
+            "web_name": p.get("web_name"),
+            "predicted": pred,
+            "actual": actual_player.get(pid, 0.0),
+            "delta": round(actual_player.get(pid, 0.0) - pred, 2),
+        })
+
+    relevant = [r for r in player_rows if r["predicted"] >= 1.5 or r["actual"] >= 3]
+    mae = round(sum(abs(r["delta"]) for r in relevant) / max(1, len(relevant)), 3)
+
+    teams_out = []
+    for entry_id in ENTRY_IDS:
+        try:
+            picks = get_json(f"/entry/{entry_id}/event/1/picks/")
+            model_points = 0.0
+            player_detail = []
+            for pick in picks.get("picks", []):
+                pid = pick["element"]
+                mult = num(pick.get("multiplier"))
+                xp = predicted.get(pid, 0.0)
+                model_points += xp * mult
+                player_detail.append({
+                    "element": pid,
+                    "web_name": element_map.get(pid, {}).get("web_name"),
+                    "multiplier": mult,
+                    "szxp": xp,
+                    "actual": actual_player.get(pid, 0.0),
+                })
+            actual = num(picks.get("entry_history", {}).get("points"))
+            teams_out.append({
+                "entry_id": entry_id,
+                "retrospective_szxp": round(model_points, 2),
+                "actual_points": actual,
+                "actual_minus_szxp": round(actual - model_points, 2),
+                "active_chip": picks.get("active_chip"),
+                "players": player_detail,
+            })
+        except Exception as e:
+            teams_out.append({"entry_id": entry_id, "error": str(e)})
+
+    return {
+        "model_version": MODEL_VERSION,
+        "gameweek": 1,
+        "type": "retrospective_backcast",
+        "valid_for_accuracy": False,
+        "warning": "Created after GW1 using post-GW1 player data. This contains hindsight leakage and must not be presented as a true pre-deadline prediction.",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "player_relevant_mae": mae,
+        "teams": teams_out,
+    }
 
 def pearson(xs, ys):
     n = min(len(xs), len(ys))
@@ -614,9 +708,11 @@ def main():
         try:
             entry = get_json(f"/entry/{entry_id}/")
             history = get_json(f"/entry/{entry_id}/history/")
+            transfers = get_json(f"/entry/{entry_id}/transfers/")
             picks = get_json(f"/entry/{entry_id}/event/{gw}/picks/")
             write_json(DATA / "entry" / f"{entry_id}.json", entry)
             write_json(DATA / "entry" / str(entry_id) / "history.json", history)
+            write_json(DATA / "entry" / str(entry_id) / "transfers.json", transfers)
             write_json(DATA / "entry" / str(entry_id) / "event" / str(gw) / "picks.json", picks)
         except Exception as e:
             errors.append({"entry_id": entry_id, "error": str(e)})
@@ -626,6 +722,14 @@ def main():
     write_json(DATA / "szxp.json", projections)
     maybe_snapshot_prediction(projections, context)
     update_accuracy(context)
+
+    # GW1 is a transparent retrospective fit check only. Genuine locked
+    # prediction accuracy starts with the first pre-deadline snapshot.
+    try:
+        gw1_backcast = build_gw1_backcast(bootstrap, fixtures)
+        write_json(DATA / "backtests" / "gw1.json", gw1_backcast)
+    except Exception as e:
+        print(f"GW1 backcast warning: {e}")
 
     meta = {
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
