@@ -22,6 +22,9 @@
     m = path.match(/^\/entry\/(\d+)\/history\/?$/);
     if (m) return `./data/entry/${m[1]}/history.json`;
 
+    m = path.match(/^\/entry\/(\d+)\/transfers\/?$/);
+    if (m) return `./data/entry/${m[1]}/transfers.json`;
+
     m = path.match(/^\/entry\/(\d+)\/event\/(\d+)\/picks\/?$/);
     if (m) return `./data/entry/${m[1]}/event/${m[2]}/picks.json`;
 
@@ -33,7 +36,6 @@
     const mapped = localPath(url);
     if (!mapped) return nativeFetch(input, init);
 
-    // Cache-bust when the app explicitly asks for no-store/refresh.
     const forceFresh = init?.cache === 'no-store';
     const finalUrl = forceFresh ? `${mapped}?v=${Date.now()}` : mapped;
     return nativeFetch(finalUrl, { ...init, headers: { Accept: 'application/json' } });
