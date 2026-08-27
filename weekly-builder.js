@@ -5,14 +5,19 @@
   const POS_COUNTS = {1:2, 2:5, 3:5, 4:3};
   const POS_NAME = {1:'GKP', 2:'DEF', 3:'MID', 4:'FWD'};
   const SLOT_ORDER = [1,1,2,2,2,2,2,3,3,3,3,3,4,4,4];
+  // Weekly mode is a FREE-SQUAD optimiser:
+  // - £100.0m is a hard maximum, never a spending target.
+  // - no transfer hits, FT, selling-price or previous-squad logic applies.
+  // - projected GW points are always the primary objective.
+  const MAX_DIVERSIFICATION_COST = 2.5; // diversified options stay within 2.5 projected points of Optimal
   const PROFILES = [
-    {key:'optimal', label:'Optimal', copy:'Highest modelled next-GW score.', xp:1.00, ceiling:.03, safety:.03, diff:0, value:.08, diversity:.30, bench:.05},
-    {key:'ceiling', label:'Ceiling', copy:'More upside for a weekly-prize swing.', xp:.90, ceiling:.26, safety:.01, diff:.03, value:.05, diversity:.65, bench:.03},
-    {key:'safe', label:'Safe', copy:'Prioritises xMins and role security.', xp:.94, ceiling:.03, safety:.22, diff:0, value:.06, diversity:.75, bench:.06},
-    {key:'differential', label:'Differential', copy:'Lower-owned upside without abandoning SZxP.', xp:.86, ceiling:.14, safety:.03, diff:.24, value:.05, diversity:.95, bench:.03},
-    {key:'contrarian', label:'Contrarian', copy:'The strongest deliberate diversification route.', xp:.78, ceiling:.22, safety:.01, diff:.34, value:.04, diversity:1.35, bench:.02},
+    {key:'optimal', label:'Optimal', copy:'Pure highest modelled next-GW score.', xp:1.00, ceiling:0, safety:0, diff:0, diversity:0},
+    {key:'ceiling', label:'Ceiling', copy:'Points-first, with upside as a small tiebreaker.', xp:1.00, ceiling:.10, safety:0, diff:.01, diversity:.40},
+    {key:'safe', label:'Safe', copy:'Points-first, with xMins and role security as tiebreakers.', xp:1.00, ceiling:0, safety:.08, diff:0, diversity:.45},
+    {key:'differential', label:'Differential', copy:'Points-first, then lower-owned upside where the score gap is small.', xp:1.00, ceiling:.05, safety:.02, diff:.08, diversity:.60},
+    {key:'contrarian', label:'Contrarian', copy:'Points-first, then the strongest materially different high-upside route.', xp:1.00, ceiling:.07, safety:.01, diff:.10, diversity:.90},
   ];
-  const BEST_PROFILE = {key:'best', label:'Best 15', copy:'Pure next-GW model route.', xp:1.00, ceiling:.02, safety:.03, diff:0, value:.08, diversity:0, bench:.06};
+  const BEST_PROFILE = {key:'best', label:'Best 15', copy:'Pure next-GW points.', xp:1.00, ceiling:0, safety:0, diff:0, diversity:0};
 
   let lastBuild = null;
   let best15Cache = null;
@@ -31,14 +36,11 @@
   };
   const diffBonus = p => Math.max(0, Math.min(1, (10 - own(p)) / 10));
   const ceilingGap = p => Math.max(0, Number(p?.ceiling || px(p)) - px(p));
-  const valueScore = p => px(p) / Math.max(4, pcost(p)/10);
-
   function profilePlayerScore(p, profile, exposure={}) {
     return profile.xp*px(p)
       + profile.ceiling*ceilingGap(p)
       + profile.safety*safety(p)*2.2
       + profile.diff*diffBonus(p)*2.8
-      + profile.value*valueScore(p)
       - profile.diversity*Number(exposure[p.id] || 0)*.32;
   }
 
@@ -124,29 +126,30 @@
     const ceilingLift = xi.reduce((s,p)=>s+ceilingGap(p),0) + (captain?ceilingGap(captain):0);
     const safeLift = xi.reduce((s,p)=>s+safety(p),0);
     const diffLift = xi.reduce((s,p)=>s+diffBonus(p),0);
-    const benchXP = bench.reduce((s,p)=>s+px(p),0);
     const exposureCost = xi.reduce((s,p)=>s+Number(exposure[p.id]||0),0);
 
     let overlapPenalty = 0;
     for (const prev of previousXIs) {
       const prevSet = new Set(prev);
       const overlap = xi.reduce((n,p)=>n+(prevSet.has(p.id)?1:0),0);
-      overlapPenalty += Math.max(0, overlap-8) * 1.8; // aim for at least 3 XI differences
+      overlapPenalty += Math.max(0, overlap-8) * 1.25; // diversify only after protecting projected points
     }
 
-    const objective = actualProjected
+    const isPurePoints = profile.key === 'optimal' || profile.key === 'best';
+    const objective = isPurePoints ? actualProjected : (
+      actualProjected
       + profile.ceiling*ceilingLift
-      + profile.safety*safeLift*1.15
-      + profile.diff*diffLift*1.8
-      + profile.bench*benchXP
-      - profile.diversity*exposureCost*.55
-      - overlapPenalty*profile.diversity;
+      + profile.safety*safeLift*.75
+      + profile.diff*diffLift*1.15
+      - profile.diversity*exposureCost*.35
+      - overlapPenalty*profile.diversity
+    );
 
     const cost = players.reduce((s,p)=>s+pcost(p),0);
     return {ids, players, xi, bench, captain, vice, formation:best.formation, projected:actualProjected, objective, cost};
   }
 
-  function buildSquad(teamIds, profile, exposure={}, previousXIs=[]) {
+  function buildSquad(teamIds, profile, exposure={}, previousXIs=[], minProjected=-Infinity) {
     const error = feasibility(teamIds);
     if (error) return {error};
 
@@ -185,8 +188,10 @@
       beam = [...dedup.values()].sort((a,b)=>b.score-a.score).slice(0,BEAM);
     }
 
-    const evaluated = beam.map(st=>evaluateSquad(st.ids,profile,exposure,previousXIs)).filter(Boolean).sort((a,b)=>b.objective-a.objective);
-    return evaluated[0] || {error:'Could not evaluate a legal squad.'};
+    const evaluated = beam.map(st=>evaluateSquad(st.ids,profile,exposure,previousXIs)).filter(Boolean);
+    const withinFloor = evaluated.filter(s=>Number(s.projected||0) >= minProjected);
+    const ranked = (withinFloor.length ? withinFloor : evaluated).sort((a,b)=>b.objective-a.objective);
+    return ranked[0] || {error:'Could not evaluate a legal squad.'};
   }
 
   function updateExposure(exposure, squad) {
@@ -281,14 +286,23 @@
     const exposure = {};
     const prev = [];
     const squads = [];
-    for (const profile of PROFILES) {
-      const squad = buildSquad(teamIds,profile,exposure,prev);
+
+    const optimalProfile = PROFILES[0];
+    const optimal = buildSquad(teamIds,optimalProfile,exposure,prev);
+    if (optimal.error) return {error:optimal.error,squads};
+    squads.push({profile:optimalProfile,squad:optimal});
+    prev.push(optimal.xi.map(p=>p.id));
+    updateExposure(exposure,optimal);
+
+    const pointFloor = Number(optimal.projected||0) - MAX_DIVERSIFICATION_COST;
+    for (const profile of PROFILES.slice(1)) {
+      const squad = buildSquad(teamIds,profile,exposure,prev,pointFloor);
       if (squad.error) return {error:squad.error,squads};
       squads.push({profile,squad});
       prev.push(squad.xi.map(p=>p.id));
       updateExposure(exposure,squad);
     }
-    return {squads};
+    return {squads, optimalProjected:optimal.projected, pointFloor};
   }
 
   function allClubIds() {
@@ -306,7 +320,7 @@
     target.innerHTML = squadSummary(
       s,
       `Best 15 · GW${gw()}`,
-      'A legal £100.0m FPL squad from the full player pool: 2 GKP, 5 DEF, 5 MID, 3 FWD and max 3 per club. Starting XI and captain are optimised for this Gameweek.',
+      'Pure next-GW points optimisation from the full player pool. £100.0m is a maximum, not a target: a £60m squad is preferred if it projects higher. 2 GKP, 5 DEF, 5 MID, 3 FWD, max 3 per club, legal XI and captain.',
       true
     );
   }
@@ -320,7 +334,7 @@
     }
     const names = ids.map(id=>state.teams.find(t=>Number(t.id)===Number(id))?.short_name).filter(Boolean).join(', ');
     target.innerHTML = `
-      <div class="notice">Eligible clubs: ${esc(names)}. Five squads use the same legal FPL rules but different risk profiles and an explicit overlap penalty to diversify your winning routes. Strong core picks may still repeat when the model edge is large.</div>
+      <div class="notice">Eligible clubs: ${esc(names)}. FREE SQUAD MODE: no hits or transfer costs. Option 1 is pure maximum projected points; Options 2–5 diversify only after protecting points and are kept within ${fmt(MAX_DIVERSIFICATION_COST)} xP of the Optimal route where the search can find one. £100.0m is only a cap, so a cheaper squad wins whenever it projects higher.</div>
       ${result.squads.map((x,i)=>squadSummary(x.squad,`Option ${i+1} · ${x.profile.label}`,x.profile.copy,i===0)).join('')}
     `;
   }
@@ -339,7 +353,7 @@
 
       <div class="section card">
         <div class="section-head"><h2>Eligible-Club Weekly Builder</h2><span class="stat-note">5 diversified squads</span></div>
-        <div class="notice">Standard FPL squad rules are enforced: £100.0m budget, 15 players (2 GKP / 5 DEF / 5 MID / 3 FWD), max 3 players from one club, legal starting XI, captain and vice-captain.</div>
+        <div class="notice">FREE SQUAD MODE: £100.0m is a maximum only, not a spending target. There are no transfers, no hits, no FT and no selling-price logic. Build the highest-scoring legal 15: 2 GKP / 5 DEF / 5 MID / 3 FWD, max 3 per club, legal XI, captain and vice-captain.</div>
         <p class="subtext" style="margin-top:14px">Tick only the Premier League clubs that your weekly league allows.</p>
         <div class="controls" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:0">
           <button class="icon-button" id="weeklySelectAll" style="width:auto;padding:0 14px">Select all</button>
