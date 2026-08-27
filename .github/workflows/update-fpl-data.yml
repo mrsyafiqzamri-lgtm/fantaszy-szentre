@@ -14,19 +14,25 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: update-fpl-data-main
+  cancel-in-progress: true
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Fetch FPL data and build SZxP 2.0
+      - name: Fetch FPL data and build SZxP 2.1
         run: python scripts/update_fpl_data.py
 
       - name: Commit refreshed data and prediction snapshots
@@ -39,4 +45,18 @@ jobs:
             exit 0
           fi
           git commit -m "Update FPL data and SZxP"
-          git push
+
+          # A web edit can land while the model is running. Rebase our data-only
+          # commit on top of the latest main before pushing instead of failing
+          # with a non-fast-forward error.
+          for attempt in 1 2 3; do
+            echo "Push attempt $attempt"
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+
+          echo "Push failed after 3 attempts"
+          exit 1
