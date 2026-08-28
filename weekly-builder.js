@@ -339,6 +339,148 @@
     `;
   }
 
+
+  // Match Szentre is deliberately separate from SZxP 2.1 player projections.
+  // It uses the same official FPL team-strength + fixture context to estimate
+  // scorelines and result probabilities, but it does NOT feed back into player xP.
+  const clampMatch = (v,lo,hi) => Math.max(lo,Math.min(hi,v));
+
+  function leagueGoalBaselines() {
+    const finished = (state.fixtures || []).filter(f =>
+      f.finished &&
+      Number.isFinite(Number(f.team_h_score)) &&
+      Number.isFinite(Number(f.team_a_score))
+    );
+    const priorHome = 1.55;
+    const priorAway = 1.25;
+    if (!finished.length) return {home:priorHome, away:priorAway};
+
+    const obsHome = finished.reduce((s,f)=>s+Number(f.team_h_score||0),0) / finished.length;
+    const obsAway = finished.reduce((s,f)=>s+Number(f.team_a_score||0),0) / finished.length;
+    const w = Math.min(.65, finished.length / (finished.length + 30));
+    return {
+      home: priorHome*(1-w) + obsHome*w,
+      away: priorAway*(1-w) + obsAway*w
+    };
+  }
+
+  function strengthAverages() {
+    const keys = ['strength_attack_home','strength_attack_away','strength_defence_home','strength_defence_away'];
+    const out = {};
+    for (const key of keys) {
+      const vals = state.teams.map(t=>Number(t[key] || 1000)).filter(Number.isFinite);
+      out[key] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 1000;
+    }
+    return out;
+  }
+
+  function matchAttackMultiplier(team, opp, home, avgs, difficulty) {
+    const ownKey = home ? 'strength_attack_home' : 'strength_attack_away';
+    const oppDefKey = home ? 'strength_defence_away' : 'strength_defence_home';
+    const ownAttack = Number(team?.[ownKey] || avgs[ownKey]) / Math.max(1,avgs[ownKey]);
+    const oppDef = Number(opp?.[oppDefKey] || avgs[oppDefKey]) / Math.max(1,avgs[oppDefKey]);
+    const strength = Math.sqrt(Math.max(.35,ownAttack) * Math.max(.35,1/Math.max(.45,oppDef)));
+    const fdr = ({1:1.14,2:1.07,3:1.00,4:.93,5:.86})[Number(difficulty||3)] || 1;
+    return clampMatch((.72*strength + .28*fdr) * (home?1.025:.985), .72, 1.34);
+  }
+
+  function poisson(k, lambda) {
+    let fact = 1;
+    for (let i=2;i<=k;i++) fact *= i;
+    return Math.exp(-lambda) * Math.pow(lambda,k) / fact;
+  }
+
+  function matchPrediction(f) {
+    const home = state.teams.find(t=>Number(t.id)===Number(f.team_h));
+    const away = state.teams.find(t=>Number(t.id)===Number(f.team_a));
+    if (!home || !away) return null;
+
+    const avgs = strengthAverages();
+    const base = leagueGoalBaselines();
+    const homeMult = matchAttackMultiplier(home,away,true,avgs,f.team_h_difficulty);
+    const awayMult = matchAttackMultiplier(away,home,false,avgs,f.team_a_difficulty);
+    const lambdaH = clampMatch(base.home * homeMult, .35, 3.40);
+    const lambdaA = clampMatch(base.away * awayMult, .25, 3.10);
+
+    let pH=0, pD=0, pA=0, best={p:-1,h:0,a:0};
+    for (let h=0;h<=7;h++) {
+      for (let a=0;a<=7;a++) {
+        const p = poisson(h,lambdaH)*poisson(a,lambdaA);
+        if (h>a) pH += p;
+        else if (h===a) pD += p;
+        else pA += p;
+        if (p>best.p) best={p,h,a};
+      }
+    }
+    const gridMass = pH+pD+pA;
+    if (gridMass>0) { pH/=gridMass; pD/=gridMass; pA/=gridMass; }
+
+    const totalLambda = lambdaH+lambdaA;
+    const under25 = poisson(0,totalLambda)+poisson(1,totalLambda)+poisson(2,totalLambda);
+    const over25 = 1-under25;
+    const btts = (1-Math.exp(-lambdaH))*(1-Math.exp(-lambdaA));
+    const homeCS = Math.exp(-lambdaA);
+    const awayCS = Math.exp(-lambdaH);
+
+    const probs = [
+      {key:'H',p:pH,label:home.short_name||home.name},
+      {key:'D',p:pD,label:'Draw'},
+      {key:'A',p:pA,label:away.short_name||away.name}
+    ].sort((x,y)=>y.p-x.p);
+    const edge = probs[0].p - probs[1].p;
+    const confidence = probs[0].p>=.62 || edge>=.18 ? 'HIGH' : (probs[0].p>=.48 || edge>=.08 ? 'MEDIUM' : 'LOW');
+
+    return {
+      fixture:f, home, away, lambdaH, lambdaA, pH, pD, pA,
+      score:`${best.h}-${best.a}`,
+      over25, btts, homeCS, awayCS, confidence,
+      lean:probs[0]
+    };
+  }
+
+  function renderMatchPredictions() {
+    const target = document.getElementById('weeklyMatchPredictions');
+    if (!target) return;
+    const eventId = gw();
+    const fixtures = (state.fixtures||[])
+      .filter(f=>Number(f.event)===eventId)
+      .sort((a,b)=>String(a.kickoff_time||'').localeCompare(String(b.kickoff_time||'')));
+    const rows = fixtures.map(matchPrediction).filter(Boolean);
+
+    if (!rows.length) {
+      target.innerHTML = `<div class="card"><div class="section-head"><h2>Match Szentre · GW${eventId}</h2></div><div class="empty">No fixtures found for this Gameweek.</div></div>`;
+      return;
+    }
+
+    target.innerHTML = `
+      <div class="card">
+        <div class="section-head">
+          <div><div class="eyebrow">Match Szentre · Experimental</div><h2 style="margin-top:5px">GW${eventId} Match Predictions</h2></div>
+          <span class="stat-note">separate from SZxP 2.1</span>
+        </div>
+        <div class="notice">Predicts every Premier League fixture using official FPL team attack/defence strength, FDR, home/away context and a Poisson score model. It does not change player xP or the locked SZxP 2.1 formula.</div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr>
+            <th>Match</th><th>Predicted</th><th>Home</th><th>Draw</th><th>Away</th>
+            <th>Model xG</th><th>CS H/A</th><th>O2.5</th><th>BTTS</th><th>Conf</th>
+          </tr></thead>
+          <tbody>${rows.map(r=>`<tr>
+            <td><b>${esc(r.home.short_name||r.home.name)} vs ${esc(r.away.short_name||r.away.name)}</b><div class="team-code">${r.fixture.kickoff_time ? new Date(r.fixture.kickoff_time).toLocaleString(undefined,{weekday:'short',hour:'2-digit',minute:'2-digit'}) : ''}</div></td>
+            <td class="xp"><b>${r.score}</b><div class="team-code">${esc(r.lean.label)} lean</div></td>
+            <td>${fmt(r.pH*100,0)}%</td>
+            <td>${fmt(r.pD*100,0)}%</td>
+            <td>${fmt(r.pA*100,0)}%</td>
+            <td>${fmt(r.lambdaH,2)} – ${fmt(r.lambdaA,2)}</td>
+            <td>${fmt(r.homeCS*100,0)}% / ${fmt(r.awayCS*100,0)}%</td>
+            <td>${fmt(r.over25*100,0)}%</td>
+            <td>${fmt(r.btts*100,0)}%</td>
+            <td><span class="badge ${r.confidence==='HIGH'?'buy':r.confidence==='LOW'?'watch':'keep'}">${r.confidence}</span></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+        <p class="model-note">Predicted score is the single most likely exact scoreline, while Home/Draw/Away are the fuller probability view. For decision-making, the probabilities are more informative than the exact score.</p>
+      </div>`;
+  }
+
   function renderWeeklyShell() {
     const root = document.getElementById('weekly');
     if (!root) return;
@@ -348,6 +490,8 @@
         <h1>Build the team to win this Gameweek.</h1>
         <p class="subtext">See the model's best legal 15 for GW${gw()}, or restrict the eligible clubs and generate five diversified 15-player squads for a weekly mini-league.</p>
       </div>
+
+      <div id="weeklyMatchPredictions" class="section"><div class="skeleton"></div></div>
 
       <div id="weeklyBest15"><div class="skeleton"></div></div>
 
@@ -369,7 +513,8 @@
     `;
     wireWeekly();
     updateSelectionCount();
-    setTimeout(renderBest15,40);
+    setTimeout(renderMatchPredictions,30);
+    setTimeout(renderBest15,50);
   }
 
   function updateSelectionCount() {
