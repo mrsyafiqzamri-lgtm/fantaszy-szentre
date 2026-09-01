@@ -7,6 +7,9 @@ on:
       - '.github/workflows/update-fpl-data.yml'
       - 'scripts/update_fpl_data.py'
       - 'scripts/build_accuracy.py'
+      - 'scripts/build_szxp22.py'
+      - 'scripts/build_accuracy22.py'
+      - 'data/intelligence/**'
       - 'data-adapter.js'
       - 'app.js'
       - 'accuracy-ui.js'
@@ -37,8 +40,14 @@ jobs:
       - name: Fetch FPL data and build SZxP 2.1
         run: python scripts/update_fpl_data.py
 
-      - name: Enrich confirmed Gameweek accuracy
+      - name: Build SZxP 2.2 challenger
+        run: python scripts/build_szxp22.py
+
+      - name: Enrich confirmed SZxP 2.1 accuracy
         run: python scripts/build_accuracy.py
+
+      - name: Score confirmed SZxP 2.2 challenger accuracy
+        run: python scripts/build_accuracy22.py
 
       - name: Commit refreshed data and prediction snapshots
         run: |
