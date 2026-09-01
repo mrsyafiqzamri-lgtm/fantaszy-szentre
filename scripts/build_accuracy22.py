@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genuine out-of-sample accuracy tracking for SZxP 2.2 Challenger.
+Genuine out-of-sample accuracy tracking for SZxP 2.2.
 
 Only pre-deadline snapshots in data/predictions-2.2/ are eligible.
 Therefore GW2 can never be scored as 2.2 if 2.2 did not exist before GW2.
@@ -21,7 +21,7 @@ from update_fpl_data import (
 
 PRED_DIR_22 = DATA / "predictions-2.2"
 ACCURACY_PATH = DATA / "accuracy-2.2.json"
-MODEL_VERSION = "SZxP 2.2 Challenger"
+MODEL_VERSION = "SZxP 2.2"
 
 TEAM_NAMES = {
     113200: "Joaoassic Park",
@@ -224,7 +224,7 @@ def main():
         "gameweeks": gameweeks,
         "summary": {
             "model_version": MODEL_VERSION,
-            "mode": "challenger_shadow",
+            "mode": "production",
             "gameweeks_scored": len(gameweeks),
             "last_scored_gw": max((g["gw"] for g in gameweeks), default=None),
             "cumulative_player_mae": player_mae,

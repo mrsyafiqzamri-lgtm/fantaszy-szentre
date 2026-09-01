@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SZxP 2.2 Challenger
+SZxP 2.2
 -------------------
 Runs beside SZxP 2.1. It does NOT replace production projections.
 
@@ -35,7 +35,7 @@ from update_fpl_data import (
     predict_fixture,
 )
 
-MODEL_VERSION = "SZxP 2.2 Challenger"
+MODEL_VERSION = "SZxP 2.2"
 PRED_DIR_22 = DATA / "predictions-2.2"
 INTEL_DIR = DATA / "intelligence"
 LINEUP_INTEL_PATH = INTEL_DIR / "lineup-intel.json"
@@ -553,14 +553,14 @@ def build_projections_22(bootstrap, fixtures, context):
 
     return {
         "model_version": MODEL_VERSION,
-        "mode": "challenger_shadow",
+        "mode": "production",
         "generated_at_utc": utcnow().isoformat(),
         "next_event_ids": [e["id"] for e in context["next_events"]],
         "first_half_event_ids": event_ids,
         "published_gw": context["published_gw"],
         "players": players,
         "notes": [
-            "SZxP 2.2 is a challenger and does not replace SZxP 2.1 production yet.",
+            "SZxP 2.2 is the active production model. SZxP 2.1 continues separately as the shadow benchmark.",
             "First genuine 2.2 accuracy begins with the first pre-deadline 2.2 snapshot.",
             "2.2 adds recent-role modelling, timestamped lineup/social intelligence ingestion, optional cross-competition workload intelligence, and a captain safety gate.",
             "Social/news signals only affect the model when they are present in data/intelligence/lineup-intel.json or supplied by a future connected intel feed.",
@@ -607,7 +607,7 @@ def main():
 
     meta = {
         "model_version": MODEL_VERSION,
-        "mode": "challenger_shadow",
+        "mode": "production",
         "updated_at_utc": utcnow().isoformat(),
         "published_gw": context["published_gw"],
         "next_gw": context["next_event"]["id"] if context.get("next_event") else None,
