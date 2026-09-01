@@ -6,8 +6,10 @@ on:
     paths:
       - '.github/workflows/update-fpl-data.yml'
       - 'scripts/update_fpl_data.py'
+      - 'scripts/build_accuracy.py'
       - 'data-adapter.js'
       - 'app.js'
+      - 'accuracy-ui.js'
   schedule:
     - cron: '17 * * * *'
 
@@ -34,6 +36,9 @@ jobs:
 
       - name: Fetch FPL data and build SZxP 2.1
         run: python scripts/update_fpl_data.py
+
+      - name: Enrich confirmed Gameweek accuracy
+        run: python scripts/build_accuracy.py
 
       - name: Commit refreshed data and prediction snapshots
         run: |
