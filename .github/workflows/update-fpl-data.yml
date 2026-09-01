@@ -9,6 +9,7 @@ on:
       - 'scripts/build_accuracy.py'
       - 'scripts/build_szxp22.py'
       - 'scripts/build_accuracy22.py'
+      - 'scripts/promote_szxp22.py'
       - 'data/intelligence/**'
       - 'data-adapter.js'
       - 'app.js'
@@ -37,17 +38,20 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Fetch FPL data and build SZxP 2.1
+      - name: Build SZxP 2.1 shadow
         run: python scripts/update_fpl_data.py
 
-      - name: Build SZxP 2.2 challenger
+      - name: Build SZxP 2.2 production
         run: python scripts/build_szxp22.py
 
-      - name: Enrich confirmed SZxP 2.1 accuracy
+      - name: Score confirmed SZxP 2.1 shadow accuracy
         run: python scripts/build_accuracy.py
 
-      - name: Score confirmed SZxP 2.2 challenger accuracy
+      - name: Score confirmed SZxP 2.2 production accuracy
         run: python scripts/build_accuracy22.py
+
+      - name: Promote SZxP 2.2 to canonical website feed
+        run: python scripts/promote_szxp22.py
 
       - name: Commit refreshed data and prediction snapshots
         run: |
@@ -60,9 +64,6 @@ jobs:
           fi
           git commit -m "Update FPL data and SZxP"
 
-          # A web edit can land while the model is running. Rebase our data-only
-          # commit on top of the latest main before pushing instead of failing
-          # with a non-fast-forward error.
           for attempt in 1 2 3; do
             echo "Push attempt $attempt"
             git pull --rebase origin main
