@@ -2,9 +2,12 @@
 """Safety validator for SZxP 2.2 lineup intelligence.
 
 Removes context-reversal false positives from automatic RSS extraction before
-build_szxp22.py consumes lineup-intel.json. Example: a headline saying a
-manager "downplays injury concerns" must not become a negative availability
-signal just because it contains the words "injury concern".
+build_szxp22.py consumes lineup-intel.json.
+
+Examples that MUST be rejected as negative signals:
+- "Arteta downplays Mosquera injury concerns"
+- "Manager plays down Saka fitness concerns"
+- "No concern over Palmer injury"
 """
 
 import json
@@ -18,44 +21,33 @@ INTEL = ROOT / "data" / "intelligence"
 INPUT = INTEL / "lineup-intel.json"
 REJECTED = INTEL / "rejected-signals.json"
 
-REASSURING = (
-    "downplays injury concern",
-    "downplays injury concerns",
-    "downplays fitness concern",
-    "downplays fitness concerns",
-    "plays down injury concern",
-    "plays down injury concerns",
-    "plays down fitness concern",
-    "plays down fitness concerns",
-    "not concerned",
-    "no concern",
-    "no concerns",
-    "nothing serious",
-    "not serious",
-    "minor issue",
-    "minor knock",
-    "should be fine",
-    "expected to be fine",
-    "no injury concern",
-    "no fitness concern",
-    "allays injury fears",
-    "allays fitness fears",
-    "eases injury fears",
-    "eases fitness fears",
+REASSURING_PATTERNS = (
+    r"\bdownplays?\b.{0,90}\b(?:injury|fitness)\s+concerns?\b",
+    r"\bplays?\s+down\b.{0,90}\b(?:injury|fitness)\s+concerns?\b",
+    r"\bno\s+concerns?\b",
+    r"\bnot\s+concerned\b",
+    r"\bnothing\s+serious\b",
+    r"\bnot\s+serious\b",
+    r"\bminor\s+(?:issue|knock)\b",
+    r"\bshould\s+be\s+fine\b",
+    r"\bexpected\s+to\s+be\s+fine\b",
+    r"\bno\s+(?:injury|fitness)\s+concerns?\b",
+    r"\ballays?\b.{0,70}\b(?:injury|fitness)\s+fears?\b",
+    r"\beases?\b.{0,70}\b(?:injury|fitness)\s+fears?\b",
 )
 
-STRONG_NEGATIVE = (
-    "ruled out",
-    "will miss",
-    "set to miss",
-    "not available",
-    "unavailable",
-    "suspended",
-    "not expected to start",
-    "expected to be benched",
-    "set to be benched",
-    "dropped to the bench",
-    "fails fitness test",
+STRONG_NEGATIVE_PATTERNS = (
+    r"\bruled\s+out\b",
+    r"\bwill\s+miss\b",
+    r"\bset\s+to\s+miss\b",
+    r"\bnot\s+available\b",
+    r"\bunavailable\b",
+    r"\bsuspended\b",
+    r"\bnot\s+expected\s+to\s+start\b",
+    r"\bexpected\s+to\s+be\s+benched\b",
+    r"\bset\s+to\s+be\s+benched\b",
+    r"\bdropped\s+to\s+the\s+bench\b",
+    r"\bfails?\s+fitness\s+test\b",
 )
 
 
@@ -64,6 +56,10 @@ def normalize(value):
     text = "".join(c for c in text if not unicodedata.combining(c)).lower()
     text = re.sub(r"[^a-z0-9' -]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def matches_any(patterns, text):
+    return any(re.search(pattern, text) for pattern in patterns)
 
 
 def main():
@@ -77,9 +73,14 @@ def main():
 
     for signal in payload.get("signals", []):
         direction = str(signal.get("direction") or "").lower()
-        text = normalize(f"{signal.get('note', '')} {signal.get('source_name', '')}")
-        reassuring = any(p in text for p in REASSURING)
-        explicit_out = any(p in text for p in STRONG_NEGATIVE)
+        text = normalize(
+            f"{signal.get('note', '')} "
+            f"{signal.get('source_name', '')} "
+            f"{signal.get('player_name', '')}"
+        )
+
+        reassuring = matches_any(REASSURING_PATTERNS, text)
+        explicit_out = matches_any(STRONG_NEGATIVE_PATTERNS, text)
 
         if "negative" in direction and reassuring and not explicit_out:
             item = dict(signal)
@@ -94,6 +95,7 @@ def main():
     payload["signals"] = kept
     payload["validated_at_utc"] = datetime.now(timezone.utc).isoformat()
     payload["validation_rejected"] = len(rejected)
+
     INPUT.write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8",
