@@ -7,6 +7,7 @@ on:
       - '.github/workflows/update-fpl-data.yml'
       - 'scripts/update_fpl_data.py'
       - 'scripts/collect_lineup_intel.py'
+      - 'scripts/validate_lineup_intel.py'
       - 'scripts/build_accuracy.py'
       - 'scripts/build_szxp22.py'
       - 'scripts/build_accuracy22.py'
@@ -44,6 +45,10 @@ jobs:
 
       - name: Collect pre-deadline lineup intelligence
         run: python scripts/collect_lineup_intel.py
+        continue-on-error: true
+
+      - name: Validate lineup intelligence
+        run: python scripts/validate_lineup_intel.py
         continue-on-error: true
 
       - name: Build SZxP 2.2 production
