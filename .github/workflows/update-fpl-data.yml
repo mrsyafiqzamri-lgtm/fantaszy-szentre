@@ -6,11 +6,12 @@ on:
     paths:
       - '.github/workflows/update-fpl-data.yml'
       - 'scripts/update_fpl_data.py'
+      - 'scripts/collect_lineup_intel.py'
       - 'scripts/build_accuracy.py'
       - 'scripts/build_szxp22.py'
       - 'scripts/build_accuracy22.py'
       - 'scripts/promote_szxp22.py'
-      - 'data/intelligence/**'
+      - 'data/intelligence/manual-signals.json'
       - 'data-adapter.js'
       - 'app.js'
       - 'accuracy-ui.js'
@@ -40,6 +41,10 @@ jobs:
 
       - name: Build SZxP 2.1 shadow
         run: python scripts/update_fpl_data.py
+
+      - name: Collect pre-deadline lineup intelligence
+        run: python scripts/collect_lineup_intel.py
+        continue-on-error: true
 
       - name: Build SZxP 2.2 production
         run: python scripts/build_szxp22.py
