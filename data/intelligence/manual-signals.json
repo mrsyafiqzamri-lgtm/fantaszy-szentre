@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "notes": [
+    "Optional trusted social-media / reporter overrides for SZxP 2.2.",
+    "Use FPL player_id. Set gameweek to the target GW.",
+    "Tier A = official club/manager; B = trusted reporter; C = reliable aggregator; D should normally not be used.",
+    "Example direction values: strong_negative, negative, positive, strong_positive.",
+    "If start_probability is supplied, use a 0\u20131 value.",
+    "The automatic collector merges this file into lineup-intel.json every run."
+  ],
+  "signals": []
+}
