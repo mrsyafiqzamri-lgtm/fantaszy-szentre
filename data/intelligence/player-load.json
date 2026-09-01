@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "updated_at_utc": null,
+  "notes": [
+    "Optional external-competition workload input for SZxP 2.2 Challenger.",
+    "Populate only from timestamped information known before the FPL deadline.",
+    "Set gameweek to the target FPL Gameweek when the workload record is week-specific.",
+    "Intended fields include minutes_last_7d, minutes_last_14d, extra_time_last_7d, long_travel."
+  ],
+  "players": []
+}

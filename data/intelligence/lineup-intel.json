@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "updated_at_utc": null,
+  "notes": [
+    "Optional pre-deadline football intelligence consumed only by SZxP 2.2 Challenger.",
+    "Use player_id as the stable key.",
+    "Set gameweek to the target FPL Gameweek so a signal cannot leak into later weeks.",
+    "Tier A = official club/manager, B = trusted reporter, C = reliable aggregator, D = unverified rumour.",
+    "A signal must be timestamped. Expired signals are ignored.",
+    "This file is intentionally empty until a genuine pre-deadline signal is collected; never backfill rumours after a Gameweek to improve historical accuracy."
+  ],
+  "signals": []
+}
