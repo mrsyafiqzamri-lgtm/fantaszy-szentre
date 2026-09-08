@@ -11,10 +11,13 @@ on:
       - 'scripts/build_accuracy.py'
       - 'scripts/build_szxp22.py'
       - 'scripts/build_accuracy22.py'
-      - 'scripts/promote_szxp22.py'
+      - 'scripts/build_szxp30.py'
+      - 'scripts/build_accuracy30.py'
+      - 'scripts/promote_szxp30.py'
       - 'data/intelligence/manual-signals.json'
       - 'data-adapter.js'
       - 'app.js'
+      - 'sentre-commercial-core.js'
       - 'accuracy-ui.js'
   schedule:
     - cron: '17 * * * *'
@@ -40,7 +43,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build SZxP 2.1 shadow
+      - name: Build SZxP 2.1 legacy baseline
         run: python scripts/update_fpl_data.py
 
       - name: Collect pre-deadline lineup intelligence
@@ -51,17 +54,23 @@ jobs:
         run: python scripts/validate_lineup_intel.py
         continue-on-error: true
 
-      - name: Build SZxP 2.2 production
+      - name: Build SZxP 2.2 shadow
         run: python scripts/build_szxp22.py
 
-      - name: Score confirmed SZxP 2.1 shadow accuracy
+      - name: Build SZxP 3.0 Commercial Core
+        run: python scripts/build_szxp30.py
+
+      - name: Score SZxP 2.1 legacy accuracy
         run: python scripts/build_accuracy.py
 
-      - name: Score confirmed SZxP 2.2 production accuracy
+      - name: Score SZxP 2.2 shadow accuracy
         run: python scripts/build_accuracy22.py
 
-      - name: Promote SZxP 2.2 to canonical website feed
-        run: python scripts/promote_szxp22.py
+      - name: Score SZxP 3.0 production accuracy
+        run: python scripts/build_accuracy30.py
+
+      - name: Promote SZxP 3.0 to canonical website feed
+        run: python scripts/promote_szxp30.py
 
       - name: Commit refreshed data and prediction snapshots
         run: |
@@ -72,7 +81,7 @@ jobs:
             echo "No data changes"
             exit 0
           fi
-          git commit -m "Update FPL data and SZxP"
+          git commit -m "Update FPL data and Szentre models"
 
           for attempt in 1 2 3; do
             echo "Push attempt $attempt"
