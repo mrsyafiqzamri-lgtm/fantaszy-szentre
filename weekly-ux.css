@@ -1,0 +1,693 @@
+
+/* Fantaszy Szentre — Weekly UX Clean Layer
+   Owner-first weekly control room. No model logic is changed. */
+
+:root {
+  --fs-soft: rgba(255,255,255,.055);
+  --fs-soft-2: rgba(255,255,255,.025);
+  --fs-coral-soft: rgba(253,132,129,.10);
+  --fs-coral-line: rgba(253,132,129,.20);
+}
+
+body[data-fs-mode="simple"] {
+  --shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+
+/* ---------- TOPBAR ---------- */
+.fs-mode-toggle {
+  min-width: 72px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 12px;
+  background: #0c0c0d;
+  color: var(--text);
+  padding: 0 11px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.fs-mode-toggle:hover {
+  border-color: var(--fs-coral-line);
+  background: rgba(253,132,129,.06);
+}
+
+.fs-mode-toggle .fs-mode-dot {
+  display:inline-block;
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  margin-right:6px;
+  vertical-align:1px;
+}
+
+/* ---------- SIMPLE MODE GLOBAL ---------- */
+body[data-fs-mode="simple"] .model-note,
+body[data-fs-mode="simple"] .fs-advanced-only {
+  display: none !important;
+}
+
+body[data-fs-mode="simple"] .hero {
+  padding: 16px 0 12px;
+}
+
+body[data-fs-mode="simple"] .hero::before {
+  width: 28px;
+  margin-bottom: 10px;
+}
+
+body[data-fs-mode="simple"] .hero .eyebrow {
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+
+body[data-fs-mode="simple"] .hero h1 {
+  font-size: clamp(26px, 5vw, 36px);
+  margin-bottom: 6px;
+}
+
+body[data-fs-mode="simple"] .hero .subtext {
+  display:none;
+}
+
+body[data-fs-mode="simple"] .section {
+  margin-top: 16px;
+}
+
+body[data-fs-mode="simple"] .card {
+  border-radius: 16px;
+  padding: 14px;
+}
+
+body[data-fs-mode="simple"] .stat-value {
+  font-size: 24px;
+}
+
+body[data-fs-mode="simple"] .notice {
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+/* ---------- HOME: WEEKLY CONTROL ROOM ---------- */
+body[data-fs-mode="simple"] #overview > :not(#fsWeeklyCockpit) {
+  display:none !important;
+}
+
+#fsWeeklyCockpit {
+  display:block !important;
+  padding-top: 10px;
+}
+
+.fs-week-head {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:14px;
+  margin:8px 0 14px;
+}
+
+.fs-week-title {
+  min-width:0;
+}
+
+.fs-week-title .eyebrow {
+  margin-bottom:6px;
+}
+
+.fs-week-title h1 {
+  font-size:clamp(28px,6vw,44px);
+  margin:0;
+}
+
+.fs-deadline {
+  text-align:right;
+  flex:0 0 auto;
+}
+
+.fs-deadline b {
+  display:block;
+  font-family:Manrope,Inter,sans-serif;
+  font-size:15px;
+}
+
+.fs-deadline span {
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:10px;
+}
+
+.fs-focus-grid {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:10px;
+}
+
+.fs-focus-card {
+  position:relative;
+  min-width:0;
+  padding:14px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:16px;
+  background:linear-gradient(180deg, rgba(18,18,20,.95), rgba(8,8,9,.98));
+}
+
+.fs-focus-card.primary {
+  border-color:var(--fs-coral-line);
+  background:
+    radial-gradient(circle at 95% 0%, rgba(253,132,129,.14), transparent 42%),
+    linear-gradient(180deg, rgba(20,16,17,.96), rgba(8,8,9,.98));
+}
+
+.fs-focus-label {
+  color:var(--muted);
+  font-size:9px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.fs-focus-value {
+  margin-top:7px;
+  font-family:Manrope,Inter,sans-serif;
+  font-weight:800;
+  font-size:24px;
+  line-height:1.05;
+  letter-spacing:-.035em;
+}
+
+.fs-focus-note {
+  margin-top:6px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.4;
+}
+
+.fs-actions {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-top:10px;
+}
+
+.fs-action-button {
+  border:1px solid rgba(255,255,255,.09);
+  background:rgba(255,255,255,.025);
+  color:var(--text);
+  border-radius:14px;
+  padding:12px 10px;
+  text-align:left;
+  cursor:pointer;
+}
+
+.fs-action-button:hover {
+  border-color:var(--fs-coral-line);
+  background:var(--fs-coral-soft);
+}
+
+.fs-action-button b {
+  display:block;
+  font-size:12px;
+}
+
+.fs-action-button span {
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  margin-top:3px;
+}
+
+.fs-home-two {
+  display:grid;
+  grid-template-columns:1.1fr .9fr;
+  gap:10px;
+  margin-top:10px;
+}
+
+.fs-mini-panel {
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:16px;
+  background:rgba(10,10,11,.88);
+  padding:14px;
+}
+
+.fs-mini-panel h2 {
+  font-size:15px;
+  margin:0;
+}
+
+.fs-mini-head {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:8px;
+}
+
+.fs-shortlist-row,
+.fs-alert-row {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+
+.fs-shortlist-row:last-child,
+.fs-alert-row:last-child {
+  border-bottom:0;
+}
+
+.fs-number {
+  width:24px;
+  height:24px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  background:var(--fs-soft);
+  color:var(--muted);
+  font-size:9px;
+  font-weight:800;
+}
+
+.fs-row-main {
+  min-width:0;
+}
+
+.fs-row-main b {
+  display:block;
+  font-size:11px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.fs-row-main span {
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  margin-top:3px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.fs-row-score {
+  color:var(--accent);
+  font-size:14px;
+  font-weight:800;
+  font-family:Manrope,Inter,sans-serif;
+}
+
+.fs-empty-friendly {
+  padding:18px 4px 6px;
+  color:var(--muted);
+  font-size:10px;
+}
+
+/* ---------- TEAMS: CLEAN 9-TEAM BOARD ---------- */
+#fsTeamBoard {
+  display:none;
+}
+
+body[data-fs-mode="simple"] #fsTeamBoard {
+  display:block;
+}
+
+body[data-fs-mode="simple"] #teams > .hero,
+body[data-fs-mode="simple"] #teams > .notice,
+body[data-fs-mode="simple"] #teams > .section.grid.three,
+body[data-fs-mode="simple"] #nineTeamLineupOptimizer {
+  display:none !important;
+}
+
+.fs-team-board-head {
+  display:flex;
+  justify-content:space-between;
+  align-items:end;
+  gap:10px;
+  padding:16px 0 10px;
+}
+
+.fs-team-board-head h1 {
+  margin:0;
+  font-size:30px;
+}
+
+.fs-team-list {
+  display:grid;
+  gap:8px;
+}
+
+.fs-team-item {
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:15px;
+  background:linear-gradient(180deg, rgba(17,17,19,.95), rgba(8,8,9,.98));
+  overflow:hidden;
+}
+
+.fs-team-item[open] {
+  border-color:rgba(253,132,129,.18);
+}
+
+.fs-team-item > summary {
+  list-style:none;
+  cursor:pointer;
+  padding:12px;
+}
+
+.fs-team-item > summary::-webkit-details-marker {
+  display:none;
+}
+
+.fs-team-summary {
+  display:grid;
+  grid-template-columns:minmax(150px,1.7fr) .7fr .55fr 1fr .7fr auto;
+  gap:10px;
+  align-items:center;
+}
+
+.fs-team-name {
+  min-width:0;
+}
+
+.fs-team-name b {
+  display:block;
+  font-size:12px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.fs-team-name span {
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  margin-top:3px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.fs-team-kpi span {
+  display:block;
+  color:var(--muted);
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+
+.fs-team-kpi b {
+  display:block;
+  margin-top:3px;
+  font-size:11px;
+}
+
+.fs-team-chip {
+  font-size:9px;
+  font-weight:800;
+  color:var(--muted);
+}
+
+.fs-team-chip.live {
+  color:var(--accent);
+}
+
+.fs-chevron {
+  color:var(--muted);
+  font-size:12px;
+}
+
+.fs-team-detail {
+  border-top:1px solid rgba(255,255,255,.07);
+  padding:12px;
+}
+
+.fs-line-label {
+  color:var(--muted);
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  margin-bottom:5px;
+}
+
+.fs-player-chips {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+
+.fs-player-chip {
+  padding:5px 7px;
+  border-radius:999px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.07);
+  font-size:9px;
+}
+
+.fs-player-chip.captain {
+  background:rgba(253,132,129,.10);
+  border-color:rgba(253,132,129,.16);
+  color:#ffd0ce;
+}
+
+.fs-team-detail-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+
+.fs-team-detail-actions {
+  display:flex;
+  gap:7px;
+  margin-top:11px;
+}
+
+.fs-small-button {
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  background:rgba(255,255,255,.03);
+  color:var(--text);
+  padding:8px 10px;
+  cursor:pointer;
+  font-size:9px;
+  font-weight:800;
+}
+
+.fs-small-button.primary {
+  border-color:rgba(253,132,129,.20);
+  background:rgba(253,132,129,.08);
+  color:#ffd0ce;
+}
+
+/* ---------- PLAYERS ---------- */
+body[data-fs-mode="simple"] #players .controls {
+  grid-template-columns:1.5fr .7fr .7fr .9fr;
+  margin-top:8px;
+}
+
+body[data-fs-mode="simple"] #players th:nth-child(4),
+body[data-fs-mode="simple"] #players td:nth-child(4),
+body[data-fs-mode="simple"] #players th:nth-child(6),
+body[data-fs-mode="simple"] #players td:nth-child(6),
+body[data-fs-mode="simple"] #players th:nth-child(8),
+body[data-fs-mode="simple"] #players td:nth-child(8),
+body[data-fs-mode="simple"] #players th:nth-child(9),
+body[data-fs-mode="simple"] #players td:nth-child(9),
+body[data-fs-mode="simple"] #players th:nth-child(10),
+body[data-fs-mode="simple"] #players td:nth-child(10),
+body[data-fs-mode="simple"] #players th:nth-child(12),
+body[data-fs-mode="simple"] #players td:nth-child(12),
+body[data-fs-mode="simple"] #players th:nth-child(14),
+body[data-fs-mode="simple"] #players td:nth-child(14),
+body[data-fs-mode="simple"] #players th:nth-child(15),
+body[data-fs-mode="simple"] #players td:nth-child(15) {
+  display:none;
+}
+
+body[data-fs-mode="simple"] #players table {
+  min-width:620px;
+}
+
+/* ---------- TRANSFERS ---------- */
+body[data-fs-mode="simple"] #transfers .hero .subtext,
+body[data-fs-mode="simple"] #transfers .fs-transfer-exposure,
+body[data-fs-mode="simple"] #transfers .fs-transfer-alternatives {
+  display:none !important;
+}
+
+body[data-fs-mode="simple"] #transfers .grid.stats {
+  grid-template-columns:repeat(4,1fr);
+}
+
+body[data-fs-mode="simple"] #transfers .section-head h2 {
+  font-size:16px;
+}
+
+/* ---------- WEEKLY / MARKET ---------- */
+body[data-fs-mode="simple"] #weekly .subtext,
+body[data-fs-mode="simple"] #market .subtext {
+  display:none;
+}
+
+body[data-fs-mode="simple"] #weekly details.card:not([open]) {
+  padding:12px;
+}
+
+body[data-fs-mode="simple"] #market .list-row:nth-child(n+9) {
+  display:none;
+}
+
+/* ---------- SMALL UTILITY ---------- */
+.fs-simple-hint {
+  color:var(--muted);
+  font-size:9px;
+}
+
+.fs-pill {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:5px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);
+  color:var(--muted);
+  font-size:9px;
+  font-weight:700;
+}
+
+.fs-pill.good {
+  color:#ffd0ce;
+  border-color:rgba(253,132,129,.16);
+  background:rgba(253,132,129,.08);
+}
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-width: 900px) {
+  .fs-focus-grid {
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .fs-actions {
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .fs-home-two {
+    grid-template-columns:1fr;
+  }
+
+  .fs-team-summary {
+    grid-template-columns:minmax(140px,1.6fr) .65fr .55fr .9fr auto;
+  }
+
+  .fs-team-summary .fs-team-chip {
+    display:none;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding-bottom:98px;
+  }
+
+  .top-actions {
+    gap:6px;
+  }
+
+  .fs-mode-toggle {
+    min-width:58px;
+    padding:0 8px;
+    font-size:9px;
+  }
+
+  .fs-week-head {
+    align-items:flex-start;
+  }
+
+  .fs-deadline b {
+    font-size:12px;
+  }
+
+  .fs-deadline span {
+    font-size:8px;
+  }
+
+  .fs-focus-grid {
+    grid-template-columns:1fr 1fr;
+    gap:7px;
+  }
+
+  .fs-focus-card {
+    padding:11px;
+    border-radius:14px;
+  }
+
+  .fs-focus-value {
+    font-size:20px;
+  }
+
+  .fs-actions {
+    gap:6px;
+  }
+
+  .fs-action-button {
+    padding:10px 9px;
+  }
+
+  .fs-team-board-head h1 {
+    font-size:26px;
+  }
+
+  .fs-team-summary {
+    grid-template-columns:minmax(120px,1.7fr) .55fr .8fr auto;
+    gap:7px;
+  }
+
+  .fs-team-summary .fs-ft-kpi {
+    display:none;
+  }
+
+  .fs-team-kpi span {
+    font-size:7px;
+  }
+
+  .fs-team-kpi b {
+    font-size:10px;
+  }
+
+  .fs-team-detail-grid {
+    grid-template-columns:1fr;
+  }
+
+  body[data-fs-mode="simple"] #players .controls {
+    grid-template-columns:1fr 1fr;
+  }
+
+  body[data-fs-mode="simple"] #players .controls .input {
+    grid-column:1/-1;
+  }
+
+  body[data-fs-mode="simple"] #players th:nth-child(1),
+  body[data-fs-mode="simple"] #players td:nth-child(1),
+  body[data-fs-mode="simple"] #players th:nth-child(11),
+  body[data-fs-mode="simple"] #players td:nth-child(11) {
+    display:none;
+  }
+
+  body[data-fs-mode="simple"] #players table {
+    min-width:470px;
+  }
+
+  body[data-fs-mode="simple"] #transfers .grid.stats {
+    grid-template-columns:1fr 1fr;
+  }
+
+  body[data-fs-mode="simple"] #transfers table {
+    min-width:650px;
+  }
+}
