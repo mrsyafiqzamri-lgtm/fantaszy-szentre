@@ -16,7 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=20260827-fresh1" />
   <link rel="stylesheet" href="brand-theme.css?v=20260904-brand1" />
-  <link rel="stylesheet" href="owner-ui.css?v=20260909-ownerfinal1" />
+  <link rel="stylesheet" href="owner-ui-30.css?v=20260909-owner30-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -36,11 +36,12 @@
       <section id="players" class="view"></section>
       <section id="teams" class="view"></section>
       <section id="weekly" class="view"></section>
+      <section id="market" class="view"></section>
       <section id="more" class="view"></section>
 
-      <!-- Advanced pages are available through More, not permanent bottom navigation. -->
+      <!-- Legacy app sections remain absent from the owner test navigation.
+           The visible recommendation surface is strict SZxP 3.0 only. -->
       <section id="transfers" class="view"></section>
-      <section id="market" class="view"></section>
     </main>
 
     <nav class="bottom-nav" aria-label="Primary navigation">
@@ -48,6 +49,7 @@
       <button class="nav-item" data-view="players"><span>◫</span><small>Players</small></button>
       <button class="nav-item" data-view="teams"><span>XI</span><small>My Team</small></button>
       <button class="nav-item" data-view="weekly"><span>15</span><small>Weekly</small></button>
+      <button class="nav-item" data-view="market"><span>↗</span><small>Market</small></button>
       <button class="nav-item" data-view="more"><span>•••</span><small>More</small></button>
     </nav>
   </div>
@@ -57,11 +59,9 @@
   <script src="data-adapter.js?v=20260827-fresh1"></script>
   <script src="app.js?v=20260827-fresh1"></script>
   <script src="sentre-commercial-core.js?v=20260908-commercial1"></script>
-  <script src="portfolio-transfer.js?v=20260827-portfolio1"></script>
-  <script src="custom-transfer.js?v=20260827-custom1"></script>
-  <script src="weekly-builder.js?v=20260828-match1"></script>
-  <script src="lineup-optimizer.js?v=20260828-lineup2"></script>
+  <script src="sentre-30-runtime.js?v=20260909-runtime1"></script>
+  <script src="weekly-30.js?v=20260909-weekly30-1"></script>
   <script src="freshness.js?v=20260827-fresh1"></script>
-  <script src="owner-ui.js?v=20260909-ownerfinal1"></script>
+  <script src="owner-ui-30.js?v=20260909-owner30-1"></script>
 </body>
 </html>
