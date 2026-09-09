@@ -16,9 +16,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=20260827-fresh1" />
   <link rel="stylesheet" href="brand-theme.css?v=20260904-brand1" />
-  <link rel="stylesheet" href="weekly-ux.css?v=20260908-weeklyux1" />
+  <link rel="stylesheet" href="owner-ui.css?v=20260909-ownerfinal1" />
 </head>
-<body data-fs-mode="simple">
+<body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand-wrap">
@@ -35,31 +35,33 @@
       <section id="overview" class="view active"></section>
       <section id="players" class="view"></section>
       <section id="teams" class="view"></section>
-      <section id="transfers" class="view"></section>
       <section id="weekly" class="view"></section>
+      <section id="more" class="view"></section>
+
+      <!-- Advanced pages are available through More, not permanent bottom navigation. -->
+      <section id="transfers" class="view"></section>
       <section id="market" class="view"></section>
     </main>
 
     <nav class="bottom-nav" aria-label="Primary navigation">
       <button class="nav-item active" data-view="overview"><span>⌂</span><small>Home</small></button>
       <button class="nav-item" data-view="players"><span>◫</span><small>Players</small></button>
-      <button class="nav-item" data-view="teams"><span>XI</span><small>My Teams</small></button>
-      <button class="nav-item" data-view="transfers"><span>⇄</span><small>Transfers</small></button>
+      <button class="nav-item" data-view="teams"><span>XI</span><small>My Team</small></button>
       <button class="nav-item" data-view="weekly"><span>15</span><small>Weekly</small></button>
-      <button class="nav-item" data-view="market"><span>↗</span><small>Market</small></button>
+      <button class="nav-item" data-view="more"><span>•••</span><small>More</small></button>
     </nav>
   </div>
 
   <div id="toast" class="toast"></div>
+
   <script src="data-adapter.js?v=20260827-fresh1"></script>
   <script src="app.js?v=20260827-fresh1"></script>
   <script src="sentre-commercial-core.js?v=20260908-commercial1"></script>
-  <script src="accuracy-ui.js?v=20260908-accuracy30"></script>
   <script src="portfolio-transfer.js?v=20260827-portfolio1"></script>
   <script src="custom-transfer.js?v=20260827-custom1"></script>
   <script src="weekly-builder.js?v=20260828-match1"></script>
   <script src="lineup-optimizer.js?v=20260828-lineup2"></script>
   <script src="freshness.js?v=20260827-fresh1"></script>
-  <script src="weekly-ux.js?v=20260908-weeklyux1"></script>
+  <script src="owner-ui.js?v=20260909-ownerfinal1"></script>
 </body>
 </html>
