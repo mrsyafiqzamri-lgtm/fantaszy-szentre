@@ -1,59 +1,41 @@
-/* Fantaszy Szentre — screenshot branding + Scenario/Match UI */
+/* Fantaszy Szentre — official wordmark screenshot branding + Scenario/Match UI */
 
-/* Header lockup: keep the FS mark visible and spell out the brand beside it. */
+/* Header: use the official brand artwork, never re-typeset the name. */
 .fs30-brand-lockup{
   display:flex;
   align-items:center;
-  gap:10px;
   min-width:0;
+  flex:1 1 auto;
 }
-.fs30-brand-mark{
-  width:42px;
-  height:42px;
+.fs30-brand-wordmark{
+  display:block;
+  width:min(250px,43vw);
+  max-height:58px;
   object-fit:contain;
-  flex:0 0 auto;
-}
-.fs30-brand-copy{
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  line-height:.90;
-  min-width:0;
-  text-transform:uppercase;
-  font-family:Manrope,Inter,sans-serif;
-  letter-spacing:-.035em;
-}
-.fs30-brand-copy span{
-  color:var(--accent);
-  font-size:12px;
-  font-weight:800;
-}
-.fs30-brand-copy strong{
-  margin-top:4px;
-  color:#fff;
-  font-size:15px;
-  font-weight:800;
+  object-position:left center;
+  flex:0 1 auto;
 }
 
-/* Screenshot watermark: intentionally subtle and behind all player rows. */
+/* Screenshot watermark: the same official wordmark artwork, behind player rows. */
 .fs30-pitch::before{
-  content:"FANTASZY SZENTRE";
+  content:"";
   position:absolute;
   left:50%;
   top:50%;
-  transform:translate(-50%,-50%) rotate(-2deg);
+  width:42%;
+  aspect-ratio:3.2 / 1;
+  transform:translate(-50%,-50%);
   z-index:0;
   pointer-events:none;
-  white-space:nowrap;
-  font-family:Manrope,Inter,sans-serif;
-  font-size:clamp(18px,4.8vw,34px);
-  font-weight:800;
-  letter-spacing:-.05em;
-  color:#fff;
+  background-image:url("assets/brand/fs-wordmark.png");
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
   opacity:.095;
+  filter:saturate(.75) brightness(1.08);
 }
 .fs30-pitch::after{z-index:0}
-.fs30-pitch-row{z-index:1}
+.fs30-pitch-row{position:relative;z-index:1}
 
 /* Scenario Portfolio Engine */
 .fs30-keybet{
@@ -80,7 +62,7 @@
   line-height:1.45;
 }
 
-/* More → Match Predictions. User-facing output is deliberately just one score. */
+/* More → Match Predictions. User-facing output stays one score only. */
 .fs30-match-card{
   grid-column:1/-1;
 }
@@ -106,34 +88,20 @@
   color:#f4f4f5;
 }
 
-/* Keep header clean on narrow screenshots. */
+/* Keep header and watermark balanced on narrow screenshots. */
 @media(max-width:640px){
-  .topbar{
-    gap:8px;
-  }
-  .fs30-brand-lockup{
-    gap:7px;
-  }
-  .fs30-brand-mark{
-    width:34px;
-    height:34px;
-  }
-  .fs30-brand-copy span{
-    font-size:9px;
-  }
-  .fs30-brand-copy strong{
-    margin-top:3px;
-    font-size:11px;
+  .topbar{gap:8px}
+  .fs30-brand-wordmark{
+    width:min(210px,48vw);
+    max-height:48px;
   }
   .status-pill{
     min-width:34px;
     padding:8px 9px;
   }
-  .status-pill>span:last-child{
-    display:none;
-  }
+  .status-pill>span:last-child{display:none}
   .fs30-pitch::before{
-    font-size:clamp(16px,5.7vw,24px);
+    width:46%;
     opacity:.10;
   }
 }
