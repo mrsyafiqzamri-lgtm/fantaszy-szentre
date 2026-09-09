@@ -17,13 +17,17 @@
   <link rel="stylesheet" href="styles.css?v=20260827-fresh1" />
   <link rel="stylesheet" href="brand-theme.css?v=20260904-brand1" />
   <link rel="stylesheet" href="owner-ui-30.css?v=20260909-owner30-1" />
+  <link rel="stylesheet" href="branding-30.css?v=20260909-branding2" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-wrap">
-        <img class="brand-logo brand-logo-full" src="assets/brand/fs-wordmark.png" alt="Fantaszy Szentre" />
-        <img class="brand-logo brand-logo-mark" src="assets/brand/fs-mark.png" alt="FS" />
+      <div class="fs30-brand-lockup" aria-label="Fantaszy Szentre">
+        <img class="fs30-brand-mark" src="assets/brand/fs-mark.png" alt="FS" />
+        <div class="fs30-brand-copy" aria-hidden="true">
+          <span>Fantaszy</span>
+          <strong>Szentre</strong>
+        </div>
       </div>
       <div class="top-actions">
         <div class="status-pill" id="apiStatus"><span class="dot"></span><span>Connecting</span></div>
@@ -38,9 +42,6 @@
       <section id="weekly" class="view"></section>
       <section id="market" class="view"></section>
       <section id="more" class="view"></section>
-
-      <!-- Legacy app sections remain absent from the owner test navigation.
-           The visible recommendation surface is strict SZxP 3.0 only. -->
       <section id="transfers" class="view"></section>
     </main>
 
@@ -60,8 +61,9 @@
   <script src="app.js?v=20260827-fresh1"></script>
   <script src="sentre-commercial-core.js?v=20260908-commercial1"></script>
   <script src="sentre-30-runtime.js?v=20260909-runtime1"></script>
-  <script src="weekly-30.js?v=20260909-weekly30-1"></script>
+  <script src="weekly-30.js?v=20260909-weekly30-scenario2"></script>
   <script src="freshness.js?v=20260827-fresh1"></script>
   <script src="owner-ui-30.js?v=20260909-owner30-1"></script>
+  <script src="match-30.js?v=20260909-match30-1"></script>
 </body>
 </html>

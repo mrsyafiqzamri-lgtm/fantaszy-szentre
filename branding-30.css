@@ -1,0 +1,139 @@
+/* Fantaszy Szentre — screenshot branding + Scenario/Match UI */
+
+/* Header lockup: keep the FS mark visible and spell out the brand beside it. */
+.fs30-brand-lockup{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.fs30-brand-mark{
+  width:42px;
+  height:42px;
+  object-fit:contain;
+  flex:0 0 auto;
+}
+.fs30-brand-copy{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  line-height:.90;
+  min-width:0;
+  text-transform:uppercase;
+  font-family:Manrope,Inter,sans-serif;
+  letter-spacing:-.035em;
+}
+.fs30-brand-copy span{
+  color:var(--accent);
+  font-size:12px;
+  font-weight:800;
+}
+.fs30-brand-copy strong{
+  margin-top:4px;
+  color:#fff;
+  font-size:15px;
+  font-weight:800;
+}
+
+/* Screenshot watermark: intentionally subtle and behind all player rows. */
+.fs30-pitch::before{
+  content:"FANTASZY SZENTRE";
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%) rotate(-2deg);
+  z-index:0;
+  pointer-events:none;
+  white-space:nowrap;
+  font-family:Manrope,Inter,sans-serif;
+  font-size:clamp(18px,4.8vw,34px);
+  font-weight:800;
+  letter-spacing:-.05em;
+  color:#fff;
+  opacity:.095;
+}
+.fs30-pitch::after{z-index:0}
+.fs30-pitch-row{z-index:1}
+
+/* Scenario Portfolio Engine */
+.fs30-keybet{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:8px;
+  align-items:start;
+  margin:0 0 9px;
+  padding:9px 10px;
+  border:1px solid rgba(253,132,129,.12);
+  border-radius:11px;
+  background:rgba(253,132,129,.045);
+}
+.fs30-keybet span{
+  color:var(--accent);
+  font-size:7px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+.fs30-keybet b{
+  color:#dddde1;
+  font-size:9px;
+  line-height:1.45;
+}
+
+/* More → Match Predictions. User-facing output is deliberately just one score. */
+.fs30-match-card{
+  grid-column:1/-1;
+}
+.fs30-match-card>h2{
+  margin-bottom:10px;
+}
+.fs30-match-list{
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:12px;
+  background:rgba(255,255,255,.018);
+}
+.fs30-match-row{
+  padding:11px 12px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.fs30-match-row:last-child{border-bottom:0}
+.fs30-match-row b{
+  display:block;
+  font-family:Manrope,Inter,sans-serif;
+  font-size:12px;
+  letter-spacing:-.02em;
+  color:#f4f4f5;
+}
+
+/* Keep header clean on narrow screenshots. */
+@media(max-width:640px){
+  .topbar{
+    gap:8px;
+  }
+  .fs30-brand-lockup{
+    gap:7px;
+  }
+  .fs30-brand-mark{
+    width:34px;
+    height:34px;
+  }
+  .fs30-brand-copy span{
+    font-size:9px;
+  }
+  .fs30-brand-copy strong{
+    margin-top:3px;
+    font-size:11px;
+  }
+  .status-pill{
+    min-width:34px;
+    padding:8px 9px;
+  }
+  .status-pill>span:last-child{
+    display:none;
+  }
+  .fs30-pitch::before{
+    font-size:clamp(16px,5.7vw,24px);
+    opacity:.10;
+  }
+}
