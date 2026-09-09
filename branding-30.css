@@ -1,6 +1,5 @@
-/* Fantaszy Szentre — official wordmark screenshot branding + Scenario/Match UI */
+/* Fantaszy Szentre — official wordmark branding + transparent pitch watermark */
 
-/* Header: use the official brand artwork, never re-typeset the name. */
 .fs30-brand-lockup{
   display:flex;
   align-items:center;
@@ -16,28 +15,24 @@
   flex:0 1 auto;
 }
 
-/* Screenshot watermark: the same official wordmark artwork, behind player rows. */
+/* Transparent watermark asset only — no black box. */
 .fs30-pitch::before{
   content:"";
   position:absolute;
   left:50%;
   top:50%;
   width:42%;
-  aspect-ratio:3.2 / 1;
+  aspect-ratio:16 / 9;
   transform:translate(-50%,-50%);
   z-index:0;
   pointer-events:none;
-  background-image:url("assets/brand/fs-wordmark.png");
-  background-repeat:no-repeat;
-  background-position:center;
-  background-size:contain;
-  opacity:.095;
-  filter:saturate(.75) brightness(1.08);
+  background:transparent url("assets/brand/fs-wordmark-transparent.png?v=20260909-transparent1") center/contain no-repeat;
+  opacity:.07;
+  filter:none;
 }
 .fs30-pitch::after{z-index:0}
 .fs30-pitch-row{position:relative;z-index:1}
 
-/* Scenario Portfolio Engine */
 .fs30-keybet{
   display:grid;
   grid-template-columns:auto minmax(0,1fr);
@@ -62,13 +57,8 @@
   line-height:1.45;
 }
 
-/* More → Match Predictions. User-facing output stays one score only. */
-.fs30-match-card{
-  grid-column:1/-1;
-}
-.fs30-match-card>h2{
-  margin-bottom:10px;
-}
+.fs30-match-card{grid-column:1/-1}
+.fs30-match-card>h2{margin-bottom:10px}
 .fs30-match-list{
   overflow:hidden;
   border:1px solid rgba(255,255,255,.07);
@@ -88,7 +78,6 @@
   color:#f4f4f5;
 }
 
-/* Keep header and watermark balanced on narrow screenshots. */
 @media(max-width:640px){
   .topbar{gap:8px}
   .fs30-brand-wordmark{
@@ -102,6 +91,6 @@
   .status-pill>span:last-child{display:none}
   .fs30-pitch::before{
     width:46%;
-    opacity:.10;
+    opacity:.07;
   }
 }
