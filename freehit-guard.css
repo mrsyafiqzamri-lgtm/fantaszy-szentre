@@ -1,0 +1,21 @@
+/* Free Hit reversion source badge */
+.fs-fh-source-note{
+  margin:8px 0 12px;
+  padding:9px 11px;
+  border:1px solid rgba(253,132,129,.18);
+  border-radius:12px;
+  background:rgba(253,132,129,.055);
+  line-height:1.4;
+}
+.fs-fh-source-note b{
+  display:block;
+  color:#ffd0ce;
+  font-size:9px;
+  font-weight:800;
+}
+.fs-fh-source-note span{
+  display:block;
+  margin-top:3px;
+  color:var(--muted,#9b9ba1);
+  font-size:8px;
+}

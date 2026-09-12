@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="brand-theme.css?v=20260904-brand1" />
   <link rel="stylesheet" href="owner-ui-30.css?v=20260909-owner30-1" />
   <link rel="stylesheet" href="branding-30.css?v=20260909-branding4" />
+  <link rel="stylesheet" href="freehit-guard.css?v=20260912-freehit1" />
 </head>
 <body>
   <div class="app-shell">
@@ -53,6 +54,8 @@
 
   <div id="toast" class="toast"></div>
 
+  <!-- Must load before any FPL public-picks fetch. -->
+  <script src="freehit-guard.js?v=20260912-freehit1"></script>
   <script src="data-adapter.js?v=20260827-fresh1"></script>
   <script src="app.js?v=20260827-fresh1"></script>
   <script src="sentre-commercial-core.js?v=20260908-commercial1"></script>
