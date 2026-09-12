@@ -2,355 +2,405 @@
   'use strict';
 
   /*
-   * Fantaszy Szentre — Free Hit Reversion Guard
+   * Fantaszy Szentre — Free Hit Reversion Guard v2
    *
-   * Purpose:
-   * FPL's public picks endpoint shows the one-week Free Hit squad for the
-   * Gameweek in which the chip was played. When planning the following GW,
-   * that is NOT the manager's permanent squad. This guard replaces the
-   * temporary FH squad with the most recent non-Free-Hit public squad before
-   * the rest of Fantaszy Szentre consumes it.
-   *
-   * It works in two layers:
-   *  1) intercept public FPL picks fetches before data-adapter.js sees them;
-   *  2) repair state.teamData later as a safety net if data came from cache.
+   * v2 fixes the important case where the app's normalized/cached picks object
+   * no longer contains active_chip. We now verify the chip from the official
+   * entry history, then mutate the already-loaded teamData IN PLACE so every
+   * consumer (XI, captain, bench, transfer, chip and warnings) sees the same
+   * permanent squad.
    */
 
-  const VERSION = '20260912-freehit-reversion-1';
+  const VERSION = '20260912-freehit-reversion-2';
+  const FPL = 'https://fantasy.premierleague.com/api';
   const nativeFetch = window.fetch.bind(window);
-  const pickCache = new Map();
-  const resolvingTeams = new Map();
-  const MAX_LOOKBACK = 38;
+
+  const historyCache = new Map();
+  const picksCache = new Map();
+  const resolving = new Map();
 
   const n = v => Number(v || 0);
+  const norm = v => String(v || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
 
-  function chipName(v) {
-    return String(v || '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+  function isFreeHitName(name) {
+    const x = norm(name);
+    return x === 'freehit' || x === 'freehitchip' || x === 'fh';
   }
 
-  function isFreeHit(data) {
-    const c = chipName(data?.active_chip);
-    return c === 'freehit' || c === 'freehitchip' || c === 'fh';
+  function validPicksPayload(x) {
+    return Boolean(x && Array.isArray(x.picks) && x.picks.length === 15);
   }
 
-  function parsePicksUrl(raw) {
+  function responseJson(data, original) {
+    const headers = new Headers();
+    headers.set('content-type', 'application/json; charset=utf-8');
+    headers.set('cache-control', 'no-store, max-age=0');
+    return new Response(JSON.stringify(data), {
+      status: original?.ok ? original.status : 200,
+      statusText: original?.statusText || 'OK',
+      headers
+    });
+  }
+
+  function parseEntryPicks(input) {
     try {
-      const url = typeof raw === 'string' ? raw : raw?.url;
-      if (!url) return null;
-      const u = new URL(url, window.location.href);
+      const raw = typeof input === 'string' ? input : input?.url;
+      if (!raw) return null;
+      const u = new URL(raw, location.href);
       const m = u.pathname.match(/\/api\/entry\/(\d+)\/event\/(\d+)\/picks\/?$/i);
-      if (!m) return null;
-      return {
-        entryId: Number(m[1]),
-        gw: Number(m[2]),
-        url: u,
-        original: url,
-      };
+      return m ? {entryId:Number(m[1]), gw:Number(m[2])} : null;
     } catch {
       return null;
     }
   }
 
-  function buildPreviousUrl(parsed, gw) {
-    const u = new URL(parsed.url.href);
-    u.pathname = u.pathname.replace(
-      /\/api\/entry\/\d+\/event\/\d+\/picks\/?$/i,
-      `/api/entry/${parsed.entryId}/event/${gw}/picks/`
-    );
-    u.search = '';
-    return u.href;
-  }
-
-  async function jsonFromResponse(response) {
+  async function fetchOfficialJson(url, init={}) {
     try {
-      return await response.clone().json();
+      const r = await nativeFetch(url, {...init, cache:'no-store'});
+      if (!r.ok) return null;
+      return await r.json();
     } catch {
       return null;
     }
   }
 
-  async function getHistoricalPicks(parsed, gw, init) {
-    const key = `${parsed.entryId}:${gw}`;
-    if (pickCache.has(key)) return pickCache.get(key);
-
-    const promise = (async () => {
-      try {
-        const response = await nativeFetch(buildPreviousUrl(parsed, gw), {
-          ...(init || {}),
-          cache: 'no-store',
-        });
-        if (!response.ok) return null;
-        const data = await response.json();
-        if (!Array.isArray(data?.picks) || data.picks.length !== 15) return null;
-        return data;
-      } catch {
-        return null;
-      }
-    })();
-
-    pickCache.set(key, promise);
-    return promise;
+  async function officialHistory(entryId) {
+    entryId = Number(entryId);
+    if (!entryId) return null;
+    if (!historyCache.has(entryId)) {
+      historyCache.set(entryId, fetchOfficialJson(`${FPL}/entry/${entryId}/history/`));
+    }
+    return historyCache.get(entryId);
   }
 
-  async function findPermanentSquad(parsed, init) {
-    let gw = parsed.gw - 1;
-    let checked = 0;
+  async function officialPicks(entryId, gw) {
+    entryId = Number(entryId); gw = Number(gw);
+    if (!entryId || !gw) return null;
+    const key = `${entryId}:${gw}`;
+    if (!picksCache.has(key)) {
+      picksCache.set(key, fetchOfficialJson(`${FPL}/entry/${entryId}/event/${gw}/picks/`));
+    }
+    return picksCache.get(key);
+  }
 
-    while (gw >= 1 && checked < MAX_LOOKBACK) {
-      const data = await getHistoricalPicks(parsed, gw, init);
-      if (data && !isFreeHit(data)) {
-        return { gw, data };
-      }
-      gw -= 1;
-      checked += 1;
+  function localChipArrays(td) {
+    return [
+      td?.history?.chips,
+      td?.entry_history?.chips,
+      td?.entry?.history?.chips,
+      td?.entry?.chips,
+      td?.chips,
+      td?.picks?.chips
+    ].filter(Array.isArray);
+  }
+
+  function localFreeHitEvent(td, gw) {
+    for (const chips of localChipArrays(td)) {
+      const hit = chips.find(c => Number(c?.event) === Number(gw) && isFreeHitName(c?.name || c?.chip));
+      if (hit) return Number(gw);
+    }
+    return 0;
+  }
+
+  async function verifiedFreeHitEvent(td, entryId, gw) {
+    if (isFreeHitName(td?.picks?.active_chip)) return Number(gw);
+
+    const local = localFreeHitEvent(td, gw);
+    if (local) return local;
+
+    const history = await officialHistory(entryId);
+    const hit = (history?.chips || []).find(c =>
+      Number(c?.event) === Number(gw) && isFreeHitName(c?.name)
+    );
+    return hit ? Number(gw) : 0;
+  }
+
+  async function previousPermanentPicks(entryId, beforeGw) {
+    for (let gw = Number(beforeGw) - 1; gw >= 1; gw--) {
+      const [picks, history] = await Promise.all([
+        officialPicks(entryId, gw),
+        officialHistory(entryId)
+      ]);
+      if (!validPicksPayload(picks)) continue;
+
+      const fh = (history?.chips || []).some(c =>
+        Number(c?.event) === gw && isFreeHitName(c?.name)
+      ) || isFreeHitName(picks?.active_chip);
+
+      if (!fh) return {gw, data:picks};
     }
     return null;
   }
 
-  function effectiveEntryHistory(current, previous, requestedGw) {
-    const currentHistory = current?.entry_history || {};
-    const previousHistory = previous?.entry_history || {};
-
-    // Keep the latest completed-GW performance fields, but restore permanent
-    // squad finance and discard temporary FH transfer counts.
-    return {
-      ...previousHistory,
-      ...currentHistory,
-      event: n(currentHistory.event) || requestedGw,
-      bank: previousHistory.bank ?? currentHistory.bank ?? 0,
-      value: previousHistory.value ?? currentHistory.value ?? 0,
-      event_transfers: 0,
-      event_transfers_cost: 0,
-    };
-  }
-
-  function makeEffectivePayload(current, source, parsed) {
-    const meta = {
-      type: 'freehit-reversion',
-      freehit_event: parsed.gw,
-      permanent_source_event: source.gw,
-      public_baseline: true,
-      resolved_at: new Date().toISOString(),
-      version: VERSION,
-    };
-
-    return {
-      ...current,
-      active_chip: null,
-      picks: (source.data.picks || []).map(p => ({ ...p })),
-      entry_history: effectiveEntryHistory(current, source.data, parsed.gw),
-      _fs_freehit_reversion: meta,
-      _fs_original_active_chip: current?.active_chip || 'freehit',
-    };
-  }
-
-  function responseFromJson(data, originalResponse) {
-    const headers = new Headers();
-    headers.set('content-type', 'application/json; charset=utf-8');
-    headers.set('cache-control', 'no-store, max-age=0');
-    const status = originalResponse?.status >= 200 && originalResponse?.status < 300
-      ? originalResponse.status
-      : 200;
-    return new Response(JSON.stringify(data), {
-      status,
-      statusText: originalResponse?.statusText || 'OK',
-      headers,
-    });
-  }
-
-  async function resolveFreeHitResponse(parsed, currentData, originalResponse, init) {
-    const source = await findPermanentSquad(parsed, init);
-    if (!source) {
-      const unresolved = {
-        ...currentData,
-        _fs_freehit_unresolved: {
-          type: 'freehit-unresolved',
-          freehit_event: parsed.gw,
-          version: VERSION,
-        },
-      };
-      return responseFromJson(unresolved, originalResponse);
-    }
-    return responseFromJson(makeEffectivePayload(currentData, source, parsed), originalResponse);
-  }
-
-  // Install BEFORE data-adapter.js.
-  window.fetch = async function fsFreeHitAwareFetch(input, init) {
-    const response = await nativeFetch(input, init);
-    const parsed = parsePicksUrl(input);
-    if (!parsed || !response.ok) return response;
-
-    const data = await jsonFromResponse(response);
-    if (!data || !isFreeHit(data)) return response;
-
-    return resolveFreeHitResponse(parsed, data, response, init);
-  };
-
-  function currentSellingPrice(purchasePrice, currentPrice) {
-    const purchase = n(purchasePrice);
-    const current = n(currentPrice);
-    if (!purchase || !current) return n(currentPrice || purchasePrice);
+  function currentSellingPrice(purchase, current) {
+    purchase = n(purchase);
+    current = n(current);
+    if (!purchase) return current;
+    if (!current) return purchase;
     if (current <= purchase) return current;
     return purchase + Math.floor((current - purchase) / 2);
   }
 
-  function refreshFinance(td) {
-    const meta = td?.picks?._fs_freehit_reversion;
-    if (!meta || !Array.isArray(td?.picks?.picks) || !Array.isArray(window.state?.players)) return;
-
-    let squadSellingValue = 0;
-    td.picks.picks = td.picks.picks.map(pick => {
-      const player = state.players.find(p => Number(p.id) === Number(pick.element));
-      if (!player) {
-        squadSellingValue += n(pick.selling_price);
-        return pick;
-      }
-      const selling = currentSellingPrice(pick.purchase_price, player.now_cost);
-      squadSellingValue += selling;
-      return { ...pick, selling_price: selling };
-    });
-
-    const bank = n(td.picks?.entry_history?.bank);
-    if (td.picks.entry_history) {
-      td.picks.entry_history.value = squadSellingValue + bank;
-    }
+  function playerNowCost(id) {
+    const p = (window.state?.players || []).find(x => Number(x.id) === Number(id));
+    return n(p?.now_cost);
   }
 
-  async function resolveTeamData(td) {
-    if (!td?.ok || !td?.picks || !isFreeHit(td.picks)) return false;
-    const entryId = Number(td.id || td.entry?.id || td.entry?.entry);
-    const gw = Number(td.picks?.entry_history?.event || window.state?.publishedGW || 0);
+  function restoreFinance(current, source) {
+    const bank = source?.entry_history?.bank ?? current?.entry_history?.bank ?? 0;
+
+    let sellingTotal = 0;
+    for (const p of current.picks || []) {
+      const now = playerNowCost(p.element);
+      const selling = currentSellingPrice(p.purchase_price, now || p.selling_price);
+      p.selling_price = selling;
+      sellingTotal += selling;
+    }
+
+    current.entry_history = {
+      ...(current.entry_history || {}),
+      bank: n(bank),
+      value: sellingTotal ? sellingTotal + n(bank) : (source?.entry_history?.value ?? current?.entry_history?.value ?? 0),
+      event_transfers: 0,
+      event_transfers_cost: 0
+    };
+  }
+
+  function applyInPlace(td, freeHitGw, source) {
+    const current = td?.picks;
+    if (!current || !validPicksPayload(source?.data)) return false;
+
+    if (!td._fs_public_freehit_snapshot) {
+      try { td._fs_public_freehit_snapshot = JSON.parse(JSON.stringify(current)); }
+      catch { td._fs_public_freehit_snapshot = current; }
+    }
+
+    // Important: mutate the EXISTING array/object instead of replacing it.
+    // Any function that already kept a reference to td.picks now sees the fix.
+    const arr = Array.isArray(current.picks) ? current.picks : [];
+    arr.splice(0, arr.length, ...source.data.picks.map(p => ({...p})));
+    current.picks = arr;
+
+    current.active_chip = null;
+    current._fs_original_active_chip = 'freehit';
+    current._fs_freehit_reversion = {
+      type:'freehit-reversion',
+      freehit_event:Number(freeHitGw),
+      permanent_source_event:Number(source.gw),
+      verified_from:'entry-history',
+      resolved_at:new Date().toISOString(),
+      version:VERSION
+    };
+    delete current._fs_freehit_unresolved;
+
+    // Keep latest GW identity for UI/rank context, but use permanent-squad finance.
+    current.entry_history = {
+      ...(source.data.entry_history || {}),
+      ...(current.entry_history || {}),
+      event: Number(current.entry_history?.event || freeHitGw)
+    };
+
+    restoreFinance(current, source.data);
+
+    td._fs_effective_squad_event = Number(source.gw);
+    td._fs_freehit_event = Number(freeHitGw);
+    return true;
+  }
+
+  function teamEntryId(td) {
+    return Number(td?.id || td?.entry?.id || td?.entry?.entry || 0);
+  }
+
+  function snapshotGw(td) {
+    return Number(
+      td?.picks?.entry_history?.event ||
+      window.state?.publishedGW ||
+      td?.entry?.current_event ||
+      0
+    );
+  }
+
+  async function resolveTeam(td) {
+    if (!td?.ok || !td?.picks) return false;
+    if (td.picks._fs_freehit_reversion?.version === VERSION) return true;
+
+    const entryId = teamEntryId(td);
+    const gw = snapshotGw(td);
     if (!entryId || !gw) return false;
 
     const key = `${entryId}:${gw}`;
-    if (resolvingTeams.has(key)) return resolvingTeams.get(key);
+    if (resolving.has(key)) return resolving.get(key);
 
-    const promise = (async () => {
-      const parsed = parsePicksUrl(
-        `https://fantasy.premierleague.com/api/entry/${entryId}/event/${gw}/picks/`
-      );
-      if (!parsed) return false;
-
-      const source = await findPermanentSquad(parsed, { cache: 'no-store' });
-      if (!source) {
-        td.picks._fs_freehit_unresolved = {
-          type: 'freehit-unresolved',
-          freehit_event: gw,
-          version: VERSION,
-        };
+    const task = (async () => {
+      const fhGw = await verifiedFreeHitEvent(td, entryId, gw);
+      if (!fhGw) {
+        td._fs_squad_source_verified = true;
         return false;
       }
 
-      if (!td._fs_public_freehit_picks) td._fs_public_freehit_picks = td.picks;
-      td.picks = makeEffectivePayload(td.picks, source, parsed);
-      refreshFinance(td);
-      return true;
+      const source = await previousPermanentPicks(entryId, fhGw);
+      if (!source) {
+        td.picks._fs_freehit_unresolved = {
+          type:'freehit-unresolved',
+          freehit_event:fhGw,
+          version:VERSION
+        };
+        td._fs_squad_source_verified = false;
+        return false;
+      }
+
+      const changed = applyInPlace(td, fhGw, source);
+      td._fs_squad_source_verified = changed;
+      return changed;
     })();
 
-    resolvingTeams.set(key, promise);
-    try {
-      return await promise;
-    } finally {
-      resolvingTeams.delete(key);
-    }
+    resolving.set(key, task);
+    try { return await task; }
+    finally { resolving.delete(key); }
   }
 
-  async function repairLoadedState() {
+  async function repairAll() {
     const list = window.state?.teamData;
     if (!Array.isArray(list) || !list.length) return false;
 
     let changed = false;
     for (const td of list) {
-      if (td?.picks?._fs_freehit_reversion) {
-        refreshFinance(td);
-        continue;
-      }
-      if (isFreeHit(td?.picks)) {
-        const fixed = await resolveTeamData(td);
-        changed = changed || fixed;
-      }
+      try {
+        const x = await resolveTeam(td);
+        changed = changed || x;
+      } catch {}
     }
 
     if (changed) {
+      // Re-render every owner recommendation surface after the mutation.
       try { window.FSOwner30?.render?.(); } catch {}
+      try { window.FSWeekly30?.render?.(); } catch {}
+      try { window.renderTeams?.(); } catch {}
     }
     return changed;
   }
 
-  function selectedTeamData() {
-    const list = window.state?.teamData;
-    if (!Array.isArray(list)) return null;
-    const picker = document.getElementById('fs30TeamPicker');
-    const id = Number(picker?.value || 0);
+  function selectedTeam() {
+    const list = window.state?.teamData || [];
+    const id = Number(document.getElementById('fs30TeamPicker')?.value || 0);
     return list.find(x => Number(x.id) === id) || null;
   }
 
-  function injectSourceNote() {
+  function injectNote() {
     const hub = document.getElementById('fsTeamHub');
     if (!hub) return;
-
-    const old = hub.querySelector('.fs-fh-source-note');
-    const td = selectedTeamData();
+    const td = selectedTeam();
     const meta = td?.picks?._fs_freehit_reversion;
     const unresolved = td?.picks?._fs_freehit_unresolved;
+    let note = hub.querySelector('.fs-fh-source-note');
 
     if (!meta && !unresolved) {
-      old?.remove();
+      note?.remove();
       return;
     }
 
-    const note = old || document.createElement('div');
-    note.className = 'fs-fh-source-note';
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'fs-fh-source-note';
+      const picker = hub.querySelector('#fs30TeamPicker');
+      if (picker) picker.insertAdjacentElement('afterend', note);
+      else hub.prepend(note);
+    }
 
     if (meta) {
       note.innerHTML =
-        `<b>Free Hit reversion applied</b>` +
+        `<b>Free Hit reversion verified</b>` +
         `<span>GW${meta.freehit_event} temporary squad ignored · ` +
-        `using permanent GW${meta.permanent_source_event} squad as the public baseline.</span>`;
+        `permanent GW${meta.permanent_source_event} squad used for planning.</span>`;
     } else {
       note.innerHTML =
-        `<b>Free Hit squad not used for recommendations</b>` +
-        `<span>Permanent squad could not be verified yet. Refresh before acting on transfers.</span>`;
-    }
-
-    if (!old) {
-      const picker = hub.querySelector('#fs30TeamPicker');
-      if (picker?.parentNode) {
-        picker.insertAdjacentElement('afterend', note);
-      } else {
-        hub.prepend(note);
-      }
+        `<b>Squad source not verified</b>` +
+        `<span>Free Hit detected but permanent squad could not be loaded. ` +
+        `Do not act on transfer advice yet.</span>`;
     }
   }
+
+  /*
+   * Fetch interception remains as an EARLY fast-path. Unlike v1, v2 does not
+   * depend on it because the post-load history audit above is authoritative.
+   */
+  window.fetch = async function freeHitAwareFetch(input, init) {
+    const response = await nativeFetch(input, init);
+    const parsed = parseEntryPicks(input);
+    if (!parsed || !response.ok) return response;
+
+    let data = null;
+    try { data = await response.clone().json(); } catch {}
+    if (!validPicksPayload(data)) return response;
+
+    let fh = isFreeHitName(data.active_chip);
+    if (!fh) {
+      const history = await officialHistory(parsed.entryId);
+      fh = (history?.chips || []).some(c =>
+        Number(c?.event) === parsed.gw && isFreeHitName(c?.name)
+      );
+    }
+    if (!fh) return response;
+
+    const source = await previousPermanentPicks(parsed.entryId, parsed.gw);
+    if (!source) return response;
+
+    const effective = JSON.parse(JSON.stringify(data));
+    effective.picks = source.data.picks.map(p => ({...p}));
+    effective.active_chip = null;
+    effective._fs_original_active_chip = data.active_chip || 'freehit';
+    effective._fs_freehit_reversion = {
+      type:'freehit-reversion',
+      freehit_event:parsed.gw,
+      permanent_source_event:source.gw,
+      verified_from:'entry-history',
+      version:VERSION
+    };
+    effective.entry_history = {
+      ...(source.data.entry_history || {}),
+      ...(data.entry_history || {}),
+      event:Number(data.entry_history?.event || parsed.gw),
+      bank:source.data.entry_history?.bank ?? data.entry_history?.bank ?? 0,
+      event_transfers:0,
+      event_transfers_cost:0
+    };
+    return responseJson(effective, response);
+  };
 
   function audit() {
     return (window.state?.teamData || []).map(td => ({
-      id: td.id,
-      name: td.name,
-      activeChip: td.picks?.active_chip || null,
-      reversion: td.picks?._fs_freehit_reversion || null,
-      unresolved: td.picks?._fs_freehit_unresolved || null,
-      squad: (td.picks?.picks || []).map(p => Number(p.element)),
+      id: teamEntryId(td),
+      name: td?.name,
+      snapshotGw: snapshotGw(td),
+      activeChip: td?.picks?.active_chip || null,
+      reversion: td?.picks?._fs_freehit_reversion || null,
+      unresolved: td?.picks?._fs_freehit_unresolved || null,
+      verified: td?._fs_squad_source_verified ?? null,
+      elements: (td?.picks?.picks || []).map(p => Number(p.element))
     }));
   }
 
-  // Safety-net loop for cached/bundled team data and finance refresh.
+  // Run long enough to cover slow mobile/API hydration.
   let cycles = 0;
   const timer = setInterval(async () => {
-    cycles += 1;
+    cycles++;
     try {
-      await repairLoadedState();
-      injectSourceNote();
+      await repairAll();
+      injectNote();
     } catch {}
-    if (cycles > 120) clearInterval(timer);
+    if (cycles >= 240) clearInterval(timer); // 2 minutes
   }, 500);
 
+  document.addEventListener('change', e => {
+    if (e.target?.id === 'fs30TeamPicker') setTimeout(injectNote, 0);
+  });
+
   window.FSFreeHitGuard = {
-    version: VERSION,
-    isFreeHit,
-    resolveTeamData,
-    repairLoadedState,
-    refreshFinance,
+    version:VERSION,
+    resolveTeam,
+    repairAll,
     audit,
+    officialHistory,
+    officialPicks
   };
 })();
