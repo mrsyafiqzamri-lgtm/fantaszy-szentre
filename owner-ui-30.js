@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION='20260913-owner30-personal3';
+  const VERSION='20260913-owner30-personal4';
   const KEYS={
     home:'fs30:homeTeam',
     team:'fs30:teamHub',
@@ -153,18 +153,20 @@
   function playersMarkup(){
     const savedPos=new Set(loadArray(KEYS.positions,['GKP','DEF','MID','FWD']));
     const savedClubs=new Set(loadArray(KEYS.clubs,(state.teams||[]).map(t=>t.short_name)));
-    return `<div class="fs-head"><div><div class="eyebrow">Player Szentre · 3.0</div><h1>GW${state.nextEvents[0].id} SZxP</h1></div><div class="fs-meta">Next Gameweek only<br>highest SZxP first</div></div>
+    return `<div id="fsPlayerClean">
+      <div class="fs-head"><div><div class="eyebrow">Player Szentre · 3.0</div><h1>GW${state.nextEvents[0].id} SZxP</h1></div><div class="fs-meta">Next Gameweek only<br>highest SZxP first</div></div>
       <div class="fs-pcontrols"><input class="fs-search" id="fs30Search" placeholder="Search player or club…">
       <div class="fs-card fs-filter"><div class="fs-filtertop"><b>Positions</b><button type="button" data-all="position">All</button></div><div class="fs-checks">${['GKP','DEF','MID','FWD'].map(x=>`<label class="fs-check"><input data-pos type="checkbox" value="${x}" ${savedPos.has(x)?'checked':''}><span>${x}</span></label>`).join('')}</div></div>
       <div class="fs-card fs-filter"><div class="fs-filtertop"><b>Clubs</b><button type="button" data-all="club">All</button></div><div class="fs-checks">${(state.teams||[]).map(t=>`<label class="fs-check"><input data-club type="checkbox" value="${t.short_name}" ${savedClubs.has(t.short_name)?'checked':''}><span>${esc(t.short_name)}</span></label>`).join('')}</div></div></div>
-      <div class="fs-card" id="fs30PlayerRows">${playerRows()}</div>`;
+      <div class="fs-card" id="fs30PlayerRows">${playerRows()}</div>
+    </div>`;
   }
 
   function renderPlayerRows(){const box=$('#fs30PlayerRows');if(box)box.innerHTML=playerRows()}
   function renderPlayers(){
     const host=$('#players');if(!host)return false;
     if(!coreReady()){
-      host.innerHTML=lightweightLoading('Player Szentre');
+      host.innerHTML=`<div id="fsPlayerClean">${lightweightLoading('Player Szentre')}</div>`;
       return false;
     }
     host.innerHTML=playersMarkup();
