@@ -178,6 +178,12 @@
   }
 
   function riskProfileForTeam(td) {
+    // Personal owner mode may override the commercial default per team.
+    // This changes decision thresholds only; raw/calibrated SZxP never changes.
+    try {
+      const saved=String(localStorage.getItem(`fs30:risk:${td?.id}`)||'').toLowerCase();
+      if(['safe','balanced','aggressive'].includes(saved)) return saved;
+    } catch {}
     const type = String(td?.type || '');
     if (/Weekly Prize/i.test(type)) return 'aggressive';
     if (/H2H|Cup/i.test(type)) return 'safe';

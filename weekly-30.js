@@ -392,7 +392,7 @@
     if (CACHE.has(stamp)) return CACHE.get(stamp);
     const anchor={key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure SZxP 3.0 expected value.'};
     const result=build(allClubIds(),anchor,{},[],{},-Infinity,mode);
-    CACHE.clear();
+    if(CACHE.size>4)CACHE.clear();
     CACHE.set(stamp,result);
     return result;
   }
@@ -546,21 +546,24 @@
   }
 
   let lastStamp='';
-  function boot() {
+  function boot(force=false) {
     if (!ready()) return false;
     const stamp=state.meta?.updated_at_utc||'';
-    if (stamp!==lastStamp||!document.getElementById('weekly')?.querySelector('.fs30-tabs')) {
+    if (force || stamp!==lastStamp || !document.getElementById('weekly')?.querySelector('.fs30-tabs')) {
       lastStamp=stamp;render('best');
     }
     return true;
   }
 
-  const wait=setInterval(()=>{if(boot())clearInterval(wait)},200);
-  setTimeout(()=>clearInterval(wait),20000);
-  document.getElementById('refreshBtn')?.addEventListener('click',()=>setTimeout(()=>{lastStamp='';boot()},1400));
+  // Weekly optimisation is intentionally lazy. Building Best 15 while the
+  // user is opening Home wastes CPU on mobile and makes the whole app feel slow.
+  window.addEventListener('fs:view-change',e=>{if(e.detail?.name==='weekly')boot(false)});
+  window.addEventListener('fs:refresh-complete',()=>{
+    if(document.querySelector('.view.active')?.id==='weekly')boot(true);
+  });
 
   window.FSWeekly30={
-    version:'20260909-weekly30-scenario2',
-    getBest15,buildFive,render,makeScripts
+    version:'20260913-weekly30-lazy1',
+    getBest15,buildFive,render,makeScripts,boot
   };
 })();

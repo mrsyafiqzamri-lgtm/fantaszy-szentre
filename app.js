@@ -54,6 +54,23 @@ function cacheSet(key, data) {
   try { localStorage.setItem(key, JSON.stringify({t:Date.now(), data})); } catch {}
 }
 
+// One-time migration away from the old 3+ MB browser startup cache. Keep all
+// user choices under fs30:*; remove only obsolete data payloads.
+try {
+  const cacheVersion='20260913-fastbundle2';
+  if(localStorage.getItem('fs:app-cache-version')!==cacheVersion){
+    for(const k of Object.keys(localStorage)){
+      if(
+        k==='fs:/bootstrap-static/' || k==='fs:/fixtures/' ||
+        k.startsWith('fs-local:./data/szxp') ||
+        k.startsWith('fs-local:./data/accuracy') ||
+        k.startsWith('fs-local:./data/backtests/')
+      ) localStorage.removeItem(k);
+    }
+    localStorage.setItem('fs:app-cache-version',cacheVersion);
+  }
+} catch {}
+
 async function fetchJSON(path, useCache=true) {
   const key = `fs:${path}`;
   if (useCache) {
@@ -392,17 +409,80 @@ function renderPlayerRows() {
   $('#playerRows').innerHTML = getFilteredPlayers().map((p,i)=>playerRow(p,i+1)).join('');
 }
 
-async function loadPortfolio() {
+function freeHitEventsForTeam(td) {
+  const set=new Set();
+  for(const c of td?.history?.chips||[]) {
+    if(chipAlias(c?.name||c?.chip||'')==='FH') set.add(Number(c.event));
+  }
+  return set;
+}
+
+function applyPermanentTransfersToPicks(td, baseGw) {
+  if(!td?.picks?.picks?.length) return td;
+  const nextGw=Number(state.nextEvents?.[0]?.id||state.meta?.next_gw||baseGw);
+  const fhEvents=freeHitEventsForTeam(td);
+  const moves=(td.transfers||[])
+    .filter(t=>Number(t.event)>Number(baseGw)&&Number(t.event)<=nextGw&&!fhEvents.has(Number(t.event)))
+    .sort((a,b)=>Number(a.event)-Number(b.event)||String(a.time||'').localeCompare(String(b.time||'')));
+
+  if(!moves.length) return td;
+
+  const picks=td.picks.picks.map(x=>({...x}));
+  let bank=Number(td.picks?.entry_history?.bank||0);
+  const applied=[];
+
+  for(const tr of moves) {
+    const outId=Number(tr.element_out), inId=Number(tr.element_in);
+    const idx=picks.findIndex(pk=>Number(pk.element)===outId);
+    if(idx<0) continue;
+    const old=picks[idx];
+    const outCost=Number(tr.element_out_cost ?? old.selling_price ?? 0);
+    const inCost=Number(tr.element_in_cost ?? state.players.find(p=>Number(p.id)===inId)?.now_cost ?? 0);
+    bank += outCost-inCost;
+    picks[idx]={...old,element:inId,purchase_price:inCost,selling_price:inCost,multiplier:1,is_captain:false,is_vice_captain:false};
+    applied.push({event:Number(tr.event),element_out:outId,element_in:inId});
+  }
+
+  td.picks={...td.picks,picks,active_chip:null,entry_history:{...(td.picks.entry_history||{}),bank:Math.max(0,bank),event_transfers:0,event_transfers_cost:0}};
+  td.squad_source={
+    ...(td.squad_source||{}),
+    ok:true,
+    base_gw:Number(baseGw),
+    applied_transfer_count:applied.length,
+    latest_transfer_event:Math.max(Number(baseGw),...applied.map(x=>x.event)),
+    applied_moves:applied,
+    strategy:'browser fallback canonical squad + permanent transfer history'
+  };
+  return td;
+}
+
+async function loadPortfolio(force=false) {
+  // Fast path: one compact portfolio request instead of 36 individual JSONs.
+  const bundle=await fetchLocal('./data/portfolio.json',null,!force);
+  if(bundle?.teams) {
+    state.teamData=portfolio.map(t=>{
+      const row=bundle.teams[String(t.id)]||bundle.teams[t.id];
+      if(!row?.picks?.picks?.length) return {...t,...(row||{}),ok:false,error:row?.squad_source?.reason||'Portfolio bundle unavailable'};
+      return {...t,...row,ok:true};
+    });
+    return;
+  }
+
+  // Safe fallback for an older deployment: use local FPL snapshots, restore
+  // a Free Hit baseline through data-adapter.js, then apply later permanent
+  // transfers so the planning squad is still current.
   const gw = state.publishedGW;
   state.teamData = await Promise.all(portfolio.map(async t => {
     try {
       const [entry,picks,history,transfers] = await Promise.all([
-        fetchJSON(`/entry/${t.id}/`),
-        fetchJSON(`/entry/${t.id}/event/${gw}/picks/`),
-        fetchJSON(`/entry/${t.id}/history/`),
-        fetchJSON(`/entry/${t.id}/transfers/`)
+        fetchJSON(`/entry/${t.id}/`,!force),
+        fetchJSON(`/entry/${t.id}/event/${gw}/picks/`,!force),
+        fetchJSON(`/entry/${t.id}/history/`,!force),
+        fetchJSON(`/entry/${t.id}/transfers/`,!force)
       ]);
-      return {...t, entry, picks, history, transfers, ok:true};
+      const td={...t, entry, picks, history, transfers, ok:true};
+      const baseGw=Number(picks?._fs_freehit_reversion?.permanent_source_event||gw);
+      return applyPermanentTransfersToPicks(td,baseGw);
     } catch(e) {
       return {...t, ok:false,error:e.message};
     }
@@ -623,10 +703,13 @@ function firstHalfChipPlan(td) {
 }
 
 function latestPurchasePrice(td,p) {
+  const fhEvents=freeHitEventsForTeam(td);
   const ins=(td.transfers||[])
-    .filter(t=>Number(t.element_in)===Number(p.id))
-    .sort((a,b)=>Number(b.event||0)-Number(a.event||0));
+    .filter(t=>Number(t.element_in)===Number(p.id) && !fhEvents.has(Number(t.event)))
+    .sort((a,b)=>Number(b.event||0)-Number(a.event||0)||String(b.time||'').localeCompare(String(a.time||'')));
   if (ins.length && ins[0].element_in_cost != null) return Number(ins[0].element_in_cost);
+  const ownedPick=td?.picks?.picks?.find(pk=>Number(pk.element)===Number(p.id));
+  if(ownedPick?.purchase_price!=null) return Number(ownedPick.purchase_price);
   return Number(p.now_cost||0)-Number(p.cost_change_start||0);
 }
 
@@ -643,17 +726,26 @@ function inferredFreeTransfers(td) {
   const transfers=td.transfers||[];
   const chips=td.history?.chips||[];
 
+  // Reconstruct the bank entering the upcoming GW from completed/locked GWs.
   for (let gw=2; gw<nextGw; gw++) {
     const chip=chips.find(c=>Number(c.event)===gw);
     const alias=chipAlias(chip?.name||'');
-    const n=transfers.filter(t=>Number(t.event)===gw).length;
+    const used=transfers.filter(t=>Number(t.event)===gw).length;
     if (alias==='WC' || alias==='FH') {
-      ft=Math.min(5,ft); // current-GW FT is consumed by WC/FH; previously banked FTs are retained
+      // Saved transfers are retained across WC/FH under the current FPL rules.
+      ft=Math.min(5,ft);
     } else {
-      ft=Math.min(5,Math.max(0,ft-n)+1);
+      ft=Math.min(5,Math.max(0,ft-used)+1);
     }
   }
-  return ft;
+
+  // If the user has already made transfer(s) for the upcoming GW, the personal
+  // tool must plan from what is actually left, not from the opening FT bank.
+  const currentChip=chips.find(c=>Number(c.event)===nextGw);
+  const currentAlias=chipAlias(currentChip?.name||'');
+  if(currentAlias==='WC' || currentAlias==='FH') return ft;
+  const currentUsed=transfers.filter(t=>Number(t.event)===nextGw).length;
+  return Math.max(0,ft-currentUsed);
 }
 
 function squadScore(ids, mode='4gw') {
@@ -678,8 +770,17 @@ function clubCountIds(ids) {
   return out;
 }
 
+const TRANSFER_SCENARIO_CACHE=new Map();
+
 function optimiseTransferScenarios(td, mode='4gw') {
   const squad=teamSquad(td);
+  const cacheKey=[
+    td?.id, mode, state.meta?.updated_at_utc||'',
+    squad.map(p=>Number(p.id)).sort((a,b)=>a-b).join(','),
+    Number(td?.picks?.entry_history?.bank||0),
+    inferredFreeTransfers(td)
+  ].join('|');
+  if(TRANSFER_SCENARIO_CACHE.has(cacheKey)) return TRANSFER_SCENARIO_CACHE.get(cacheKey);
   const originalIds=squad.map(p=>p.id);
   const bank=Number(td.picks?.entry_history?.bank||0);
   const ft=inferredFreeTransfers(td);
@@ -761,7 +862,10 @@ function optimiseTransferScenarios(td, mode='4gw') {
   }
 
   const best=[...scenarios].sort((a,b)=>b.netGain-a.netGain)[0];
-  return {scenarios,best,ft,baselineScore};
+  const result={scenarios,best,ft,baselineScore};
+  if(TRANSFER_SCENARIO_CACHE.size>40)TRANSFER_SCENARIO_CACHE.clear();
+  TRANSFER_SCENARIO_CACHE.set(cacheKey,result);
+  return result;
 }
 
 function scenarioLabel(s) {
@@ -926,6 +1030,8 @@ function wireNavigation() {
 function openView(name) {
   $$('.view').forEach(v=>v.classList.toggle('active',v.id===name));
   $$('.nav-item').forEach(v=>v.classList.toggle('active',v.dataset.view===name));
+  if(name==='market' && state.players?.length) renderMarket();
+  window.dispatchEvent(new CustomEvent('fs:view-change',{detail:{name}}));
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -936,39 +1042,64 @@ function renderLoading() {
 async function init(force=false) {
   renderLoading();
   setApiStatus(false,'Connecting');
-  if (force) Object.keys(localStorage).filter(k=>k.startsWith('fs')).forEach(k=>localStorage.removeItem(k));
+
+  if (force) {
+    // Refresh data without erasing owner preferences (team picker, filters,
+    // risk profile, Build 5 club selection, etc.).
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('fs:/') || k.startsWith('fs-local:')) localStorage.removeItem(k);
+    }
+  }
 
   try {
-    const [bootstrap,fixtures,projectionData,accuracy,backtest,meta] = await Promise.all([
-      fetchJSON('/bootstrap-static/',!force),
-      fetchJSON('/fixtures/',!force),
-      fetchLocal('./data/szxp.json',null,!force),
-      fetchLocal('./data/accuracy.json',null,!force),
-      fetchLocal('./data/backtests/gw1.json',null,!force),
-      fetchLocal('./data/meta.json',null,!force)
-    ]);
+    // Fast path: the hourly workflow prebuilds a ~1 MB browser bundle, replacing
+    // the old 3+ MB / multi-request startup path.
+    const core=await fetchLocal('./data/web-core.json',null,!force);
 
-    state.bootstrap=bootstrap;
-    state.fixtures=fixtures;
-    state.projectionData=projectionData;
-    state.accuracy=accuracy;
-    state.backtest=backtest;
-    state.meta=meta;
-    state.events=bootstrap.events;
-    state.teams=bootstrap.teams;
+    if(core?.bootstrap?.elements?.length && core?.projectionData?.players?.length) {
+      state.bootstrap=core.bootstrap;
+      state.fixtures=core.fixtures||[];
+      state.projectionData=core.projectionData;
+      state.accuracy=null;
+      state.backtest=null;
+      state.meta=core.meta||{};
+    } else {
+      const [bootstrap,fixtures,projectionData,accuracy,backtest,meta] = await Promise.all([
+        fetchJSON('/bootstrap-static/',!force),
+        fetchJSON('/fixtures/',!force),
+        fetchLocal('./data/szxp.json',null,!force),
+        fetchLocal('./data/accuracy.json',null,!force),
+        fetchLocal('./data/backtests/gw1.json',null,!force),
+        fetchLocal('./data/meta.json',null,!force)
+      ]);
+      state.bootstrap=bootstrap;
+      state.fixtures=fixtures;
+      state.projectionData=projectionData;
+      state.accuracy=accuracy;
+      state.backtest=backtest;
+      state.meta=meta;
+    }
+
+    state.events=state.bootstrap.events||[];
+    state.teams=state.bootstrap.teams||[];
 
     currentContext();
     enrichPlayers();
-    renderOverview();
-    renderPlayers();
-    renderMarket();
+    window.FS30?.ensure?.();
 
-    const version = projectionData?.model_version || 'FPL data';
+    const version = state.projectionData?.model_version || 'FPL data';
     setApiStatus(true,version);
 
-    await loadPortfolio();
-    renderTeams();
-    renderTransfers();
+    await loadPortfolio(force);
+
+    // Owner UI, Weekly and More render only when needed. This avoids building
+    // hundreds of player rows and heavy weekly portfolios while Home is opening.
+    window.dispatchEvent(new CustomEvent('fs:data-ready',{detail:{force,version}}));
+
+    const active=document.querySelector('.view.active')?.id||'overview';
+    if(active==='market') renderMarket();
+    window.dispatchEvent(new CustomEvent('fs:view-change',{detail:{name:active,initial:true}}));
+    window.dispatchEvent(new CustomEvent('fs:refresh-complete',{detail:{force,version}}));
     toast(`${version} updated`);
   } catch(e) {
     console.error(e);

@@ -191,13 +191,10 @@
     return true;
   }
 
-  let attempts=0;
-  const timer=setInterval(()=>{
-    attempts++;
-    inject();
-    if(attempts>60)clearInterval(timer);
-  },500);
-
-  document.getElementById('refreshBtn')?.addEventListener('click',()=>setTimeout(inject,1600));
-  window.FSMatch30={version:'20260909-match30-1',predictions,markup,inject};
+  // No polling loop. More renders this engine only when the user opens More.
+  window.addEventListener('fs:view-change',e=>{if(e.detail?.name==='more')inject()});
+  window.addEventListener('fs:refresh-complete',()=>{
+    if(document.querySelector('.view.active')?.id==='more')inject();
+  });
+  window.FSMatch30={version:'20260913-match30-lazy1',predictions,markup,inject};
 })();
