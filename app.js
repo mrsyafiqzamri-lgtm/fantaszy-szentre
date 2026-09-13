@@ -1031,7 +1031,16 @@ function openView(name) {
   $$('.view').forEach(v=>v.classList.toggle('active',v.id===name));
   $$('.nav-item').forEach(v=>v.classList.toggle('active',v.dataset.view===name));
   if(name==='market' && state.players?.length) renderMarket();
+
+  // Primary event path (Weekly / More / owner UI all listen to this).
   window.dispatchEvent(new CustomEvent('fs:view-change',{detail:{name}}));
+
+  // Extra direct paint for the two lightweight owner surfaces. This prevents
+  // an empty tab on mobile even if the user taps during portfolio hydration.
+  if((name==='players'||name==='more') && window.FSOwner30?.renderView){
+    try{ window.FSOwner30.renderView(name); }catch(e){ console.error(e); }
+  }
+
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1089,6 +1098,11 @@ async function init(force=false) {
 
     const version = state.projectionData?.model_version || 'FPL data';
     setApiStatus(true,version);
+
+    // Player Szentre / More can paint immediately. They are independent of
+    // personalised portfolio loading, so never leave those tabs blank while
+    // portfolio.json is still arriving.
+    window.dispatchEvent(new CustomEvent('fs:core-ready',{detail:{force,version}}));
 
     await loadPortfolio(force);
 

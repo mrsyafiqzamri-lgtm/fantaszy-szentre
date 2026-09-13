@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION='20260913-owner30-personal2';
+  const VERSION='20260913-owner30-personal3';
   const KEYS={
     home:'fs30:homeTeam',
     team:'fs30:teamHub',
@@ -18,9 +18,19 @@
   const esc=(s='')=>String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const price=v=>`£${(n(v)/10).toFixed(1)}m`;
 
-  function dataReady(){
-    try{return Boolean(state?.teamData?.some?.(x=>x.ok)&&state?.players?.length&&state?.nextEvents?.length)}
+  function coreReady(){
+    try{return Boolean(state?.players?.length&&state?.nextEvents?.length)}
     catch{return false}
+  }
+
+  function dataReady(){
+    try{return Boolean(coreReady()&&state?.teamData?.some?.(x=>x.ok))}
+    catch{return false}
+  }
+
+  function lightweightLoading(title='Loading'){
+    return `<div class="fs-head"><div><div class="eyebrow">Fantaszy Szentre</div><h1>${esc(title)}</h1></div></div>
+      <div class="fs-card"><div class="fs30-empty">Preparing current 3.0 data…</div></div>`;
   }
 
   function teams(){return (state.teamData||[]).filter(x=>x.ok)}
@@ -152,8 +162,11 @@
 
   function renderPlayerRows(){const box=$('#fs30PlayerRows');if(box)box.innerHTML=playerRows()}
   function renderPlayers(){
-    if(!dataReady())return false;
     const host=$('#players');if(!host)return false;
+    if(!coreReady()){
+      host.innerHTML=lightweightLoading('Player Szentre');
+      return false;
+    }
     host.innerHTML=playersMarkup();
     $('#fs30Search')?.addEventListener('input',renderPlayerRows);
     $$('[data-pos]').forEach(x=>x.addEventListener('change',()=>{saveArray(KEYS.positions,$$('[data-pos]:checked').map(y=>y.value));renderPlayerRows()}));
@@ -295,8 +308,11 @@
   }
 
   function renderMore(){
-    if(!dataReady())return false;
     const root=$('#more');if(!root)return false;
+    if(!coreReady()){
+      root.innerHTML=lightweightLoading('3.0 audit & tools');
+      return false;
+    }
     root.innerHTML=moreMarkup();
     $('#fs30AccuracyBtn')?.addEventListener('click',accuracy);
     return true;
@@ -328,16 +344,32 @@
   }
 
   function renderView(name,force=false){
-    if(!dataReady())return false;
+    // Players and More only need the core 3.0 player feed. They must not wait
+    // for nine personalised team portfolios to finish loading.
+    if(name==='players'){
+      window.FS30?.ensure?.();
+      return renderPlayers();
+    }
+    if(name==='more'){
+      window.FS30?.ensure?.();
+      return renderMore();
+    }
+
+    // Home / My Team are personalised surfaces and genuinely need portfolio data.
+    if(!dataReady()){
+      const host=name==='overview'?$('#overview'):name==='teams'?$('#teams'):null;
+      if(host) host.innerHTML=lightweightLoading(name==='overview'?'My FPL':'My Team');
+      return false;
+    }
+
     window.FS30?.ensure?.();
     if(name==='overview')return renderHome();
-    if(name==='players')return renderPlayers();
     if(name==='teams')return renderTeam();
-    if(name==='more')return renderMore();
     return true;
   }
 
   document.body.addEventListener('click',e=>{const i=e.target.closest('[data-info]');if(i)showInfo(i.dataset.info)});
+  window.addEventListener('fs:core-ready',()=>renderView(document.querySelector('.view.active')?.id||'overview',true));
   window.addEventListener('fs:data-ready',()=>renderView(document.querySelector('.view.active')?.id||'overview',true));
   window.addEventListener('fs:view-change',e=>renderView(e.detail?.name||'overview'));
   window.addEventListener('fs:refresh-complete',()=>renderView(document.querySelector('.view.active')?.id||'overview',true));
