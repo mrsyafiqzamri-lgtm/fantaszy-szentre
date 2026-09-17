@@ -43,10 +43,23 @@
     Object.freeze({ DEF: 5, MID: 4, FWD: 1 }),
   ]);
 
+  const SQUAD_POSITION_COUNTS = Object.freeze({ GKP:2, DEF:5, MID:5, FWD:3 });
+  const SQUAD_SLOT_ORDER = Object.freeze([
+    'GKP','GKP',
+    'DEF','DEF','DEF','DEF','DEF',
+    'MID','MID','MID','MID','MID',
+    'FWD','FWD','FWD',
+  ]);
+  const DEFAULT_SQUAD_BUDGET = 1000;
+  const DEFAULT_FREE_HIT_BEAM = 140;
+
   const finite = (value, fallback = 0) => {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
   };
+
+  const clamp = (value, low = 0, high = 100) =>
+    Math.max(low, Math.min(high, finite(value)));
 
   const optionalFinite = value => {
     const number = Number(value);
@@ -121,6 +134,90 @@
     }
 
     return projectedAt(player, 0);
+  }
+
+
+  function applyProjectionSnapshot({players = [], projectionData = {}, expectedModel = ''} = {}) {
+    if (!Array.isArray(players) || !Array.isArray(projectionData?.players)) {
+      return {ok:false, validCount:0, reason:'Projection data is unavailable.'};
+    }
+
+    if (expectedModel && projectionData?.model_version !== expectedModel) {
+      return {ok:false, validCount:0, reason:'Projection contract mismatch.'};
+    }
+
+    const map = new Map(projectionData.players.map(player => [Number(player?.id), player]));
+    let validCount = 0;
+
+    for (const player of players) {
+      const source = map.get(Number(player?.id));
+      player._sz30Valid = false;
+      if (!source || !Array.isArray(source?.xp)) continue;
+      if (expectedModel && source?.model_version !== expectedModel) continue;
+
+      const xp = source.xp.slice(0, 4).map(value => finite(value));
+      while (xp.length < 4) xp.push(0);
+
+      player.xp = xp;
+      player.xp4 = finite(source.xp4, xp.reduce((sum, value) => sum + value, 0));
+      player.xmins = finite(source.xmins);
+      player.ceiling = finite(source.ceiling_gw1, xp[0]);
+      player.captainScore = finite(source.captain_score);
+      player.captainSentre = finite(source.captain_sentre);
+      player.captainEligible = Boolean(source.captain_eligible);
+      player.lineupScore = finite(source.lineup_score);
+      player.sentreScore = finite(source.sentre_score);
+      player.sentreLabel = source.sentre_label || '';
+      player.fixtureQualityScore = finite(source.fixture_quality_score);
+      player.minutesSecurityScore = finite(source.minutes_security_score);
+      player.riskScore = finite(source.risk_score);
+      player.roleSetPiecesScore = finite(source.role_set_pieces_score);
+      player.modelVersion = source.model_version;
+      player.modelComponents = {
+        player: source.sentre_components || {},
+        captain: source.captain_components || {},
+        lineup: source.lineup_components || {},
+      };
+      player._sz30Valid = true;
+      validCount += 1;
+    }
+
+    return {
+      ok: validCount > 0,
+      validCount,
+      totalPlayers: players.length,
+      reason: validCount > 0 ? 'Projection snapshot verified.' : 'No verified projection rows are available.',
+    };
+  }
+
+  function captainConfidence(gap) {
+    const value = Math.abs(finite(gap));
+    if (value < 3) return 'Toss-up';
+    if (value < 6) return 'Medium';
+    if (value < 10) return 'High';
+    return 'Very High';
+  }
+
+  function lineupConfidence(edge) {
+    const value = Math.abs(finite(edge));
+    if (value < 0.5) return 'Close Call';
+    if (value < 1) return 'Slight Edge';
+    if (value <= 2) return 'Clear Edge';
+    return 'Strong Start';
+  }
+
+  function closeCallTiebreak(a, b, risk = 'balanced') {
+    const profile = TRANSFER_RISK[risk] || TRANSFER_RISK.balanced;
+    const gap = Math.abs(finite(a?.score) - finite(b?.score));
+    if (gap > profile.closeTolerance) return null;
+
+    if (risk === 'safe') {
+      return finite(a?.ownership) >= finite(b?.ownership) ? a : b;
+    }
+    if (risk === 'aggressive') {
+      return finite(a?.ownership) <= finite(b?.ownership) ? a : b;
+    }
+    return null;
   }
 
   function captainPool(players = [], horizon = 0) {
@@ -406,6 +503,185 @@
     return {...resolved, scores};
   }
 
+
+  function validateSquad15(players = [], {budget = DEFAULT_SQUAD_BUDGET} = {}) {
+    const issues = [];
+    if (!Array.isArray(players) || players.length !== 15) {
+      issues.push('SQUAD_SIZE');
+      return {ok:false, issues};
+    }
+
+    const ids = players.map(player => playerId(player));
+    if (new Set(ids).size !== 15) issues.push('DUPLICATE_PLAYER');
+
+    const positionCounts = {GKP:0, DEF:0, MID:0, FWD:0};
+    const clubCounts = new Map();
+    let cost = 0;
+
+    for (const player of players) {
+      const pos = position(player);
+      if (Object.hasOwn(positionCounts, pos)) positionCounts[pos] += 1;
+      const club = Number(player?.team || 0);
+      if (club) clubCounts.set(club, (clubCounts.get(club) || 0) + 1);
+      cost += finite(player?.now_cost ?? player?.price);
+    }
+
+    for (const [pos, required] of Object.entries(SQUAD_POSITION_COUNTS)) {
+      if (positionCounts[pos] !== required) issues.push(`POSITION_${pos}`);
+    }
+    if ([...clubCounts.values()].some(count => count > 3)) issues.push('CLUB_LIMIT');
+    if (cost > finite(budget, DEFAULT_SQUAD_BUDGET)) issues.push('BUDGET');
+
+    return {ok:issues.length === 0, issues, cost, positionCounts};
+  }
+
+  function freeHitProfileScore(player, mode = 'next') {
+    if (mode === '4gw') return finite(player?.xp4);
+    const base = projectedAt(player, 0);
+    const ceilingGap = Math.max(0, finite(player?.ceiling, base) - base);
+    const safety = Math.max(0, Math.min(1, finite(player?.xmins ?? player?.xMins) / 90));
+    return base + 0.065 * ceilingGap + 0.035 * safety;
+  }
+
+  function freeHitCorrelationPenalty(xi = [], fixtures = [], nextGw = 0) {
+    const isAttack = player => ['MID','FWD'].includes(position(player));
+    const isDefence = player => ['GKP','DEF'].includes(position(player));
+    const rows = (fixtures || []).filter(fixture => !nextGw || Number(fixture?.event) === Number(nextGw));
+    let penalty = 0;
+
+    for (const fixture of rows) {
+      const home = xi.filter(player => Number(player?.team) === Number(fixture?.team_h));
+      const away = xi.filter(player => Number(player?.team) === Number(fixture?.team_a));
+      if (!home.length || !away.length) continue;
+      const homeAttack = home.filter(isAttack).length;
+      const awayAttack = away.filter(isAttack).length;
+      const homeDefence = home.filter(isDefence).length;
+      const awayDefence = away.filter(isDefence).length;
+      penalty += 0.62 * (homeAttack * awayDefence + awayAttack * homeDefence);
+      if (homeAttack >= 2 && awayDefence >= 1) penalty += 0.55;
+      if (awayAttack >= 2 && homeDefence >= 1) penalty += 0.55;
+    }
+    return penalty;
+  }
+
+  function optimizeFreeHitSquad({
+    players = [], fixtures = [], nextGw = 0, mode = 'next',
+    budget = DEFAULT_SQUAD_BUDGET, beamWidth = DEFAULT_FREE_HIT_BEAM,
+  } = {}) {
+    const legal = (players || []).filter(player => (
+      !statusUnavailable(player) &&
+      finite(player?.xmins ?? player?.xMins) >= 20 &&
+      projectedAt(player, 0) > 0 &&
+      finite(player?.now_cost ?? player?.price) > 0
+    ));
+
+    for (const [pos, count] of Object.entries(SQUAD_POSITION_COUNTS)) {
+      if (legal.filter(player => position(player) === pos).length < count) {
+        return {error:'Not enough eligible players for a legal 15.'};
+      }
+    }
+
+    const pools = {};
+    for (const pos of Object.keys(SQUAD_POSITION_COUNTS)) {
+      const row = legal.filter(player => position(player) === pos);
+      const best = row.slice().sort((a, b) => freeHitProfileScore(b, mode) - freeHitProfileScore(a, mode)).slice(0, 24);
+      const cheap = row.slice().sort((a, b) =>
+        finite(a?.now_cost ?? a?.price) - finite(b?.now_cost ?? b?.price) ||
+        freeHitProfileScore(b, mode) - freeHitProfileScore(a, mode)
+      ).slice(0, 9);
+      const unique = new Map();
+      [...best, ...cheap].forEach(player => unique.set(playerId(player), player));
+      pools[pos] = [...unique.values()];
+    }
+
+    const minRemainingCost = slot => {
+      let total = 0;
+      for (const pos of SQUAD_SLOT_ORDER.slice(slot)) {
+        const row = pools[pos] || [];
+        if (!row.length) return Infinity;
+        total += Math.min(...row.map(player => finite(player?.now_cost ?? player?.price)));
+      }
+      return total;
+    };
+
+    let beam = [{ids:[], cost:0, clubs:{}, score:0}];
+
+    for (let slot = 0; slot < SQUAD_SLOT_ORDER.length; slot++) {
+      const pos = SQUAD_SLOT_ORDER[slot];
+      const children = [];
+      const minimumRemaining = minRemainingCost(slot + 1);
+
+      for (const state of beam) {
+        const owned = new Set(state.ids);
+        for (const player of pools[pos]) {
+          const id = playerId(player);
+          const club = Number(player?.team || 0);
+          if (owned.has(id)) continue;
+          if ((state.clubs[club] || 0) >= 3) continue;
+          const newCost = state.cost + finite(player?.now_cost ?? player?.price);
+          if (newCost > budget || newCost + minimumRemaining > budget) continue;
+          children.push({
+            ids:[...state.ids, id],
+            cost:newCost,
+            clubs:{...state.clubs, [club]:(state.clubs[club] || 0) + 1},
+            score:state.score + freeHitProfileScore(player, mode),
+          });
+        }
+      }
+
+      if (!children.length) return {error:'No legal squad found within budget.'};
+
+      const dedup = new Map();
+      for (const child of children) {
+        const key = child.ids.slice().sort((a, b) => a - b).join(',');
+        const previous = dedup.get(key);
+        if (!previous || child.score > previous.score) dedup.set(key, child);
+      }
+      beam = [...dedup.values()].sort((a, b) => b.score - a.score).slice(0, beamWidth);
+    }
+
+    const byId = new Map(players.map(player => [playerId(player), player]));
+    const evaluated = beam.map(state => {
+      const squad = state.ids.map(id => byId.get(id)).filter(Boolean);
+      if (!validateSquad15(squad, {budget}).ok) return null;
+
+      if (mode === '4gw') {
+        const score = squad.reduce((sum, player) => sum + finite(player?.xp4), 0);
+        return {
+          players:squad, ids:state.ids, objective:score, projected:score,
+          cost:squad.reduce((sum, player) => sum + finite(player?.now_cost ?? player?.price), 0),
+        };
+      }
+
+      const lineup = bestXI(squad, 0);
+      if (lineup.xi.length !== 11 || !lineup.captain || !isLegalXI(lineup.xi)) return null;
+      const bench = benchOrder(squad, lineup.xi);
+      const projected = finite(lineup.projectedWithCaptain);
+      const ceilingLift = lineup.xi.reduce((sum, player) =>
+        sum + Math.max(0, finite(player?.ceiling, projectedAt(player, 0)) - projectedAt(player, 0)), 0
+      );
+      const correlationPenalty = freeHitCorrelationPenalty(lineup.xi, fixtures, nextGw);
+      const objective = projected + 0.055 * ceilingLift - correlationPenalty;
+
+      return {
+        players:squad, ids:state.ids, xi:lineup.xi, bench,
+        captain:lineup.captain, vice:lineup.vice,
+        captainReason:lineup.captainReason,
+        formation:lineup.formation,
+        projected, objective, maxOverlap:0,
+        scenarioFit:0, correlationPenalty,
+        cost:squad.reduce((sum, player) => sum + finite(player?.now_cost ?? player?.price), 0),
+      };
+    }).filter(Boolean);
+
+    const result = evaluated.sort((a, b) => b.objective - a.objective)[0] || null;
+    if (!result) return {error:'Could not evaluate the squad.'};
+
+    const validation = validateSquad15(result.players, {budget});
+    if (!validation.ok) return {error:`Invalid optimized squad: ${validation.issues.join(', ')}`};
+    return result;
+  }
+
   function normalizeChipName(value) {
     return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   }
@@ -500,6 +776,10 @@
     legalFormations: LEGAL_FORMATIONS,
     projectedAt,
     hasCanonicalSignals,
+    applyProjectionSnapshot,
+    captainConfidence,
+    lineupConfidence,
+    closeCallTiebreak,
     lineupMetric,
     chooseCaptain,
     selectCaptain,
@@ -520,6 +800,8 @@
     tripleCaptainOpportunity,
     resolveChipConflict,
     evaluateChips,
+    validateSquad15,
+    optimizeFreeHitSquad,
     normalizeChipName,
     isFreeHitName,
     freeHitEvents,

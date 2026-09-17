@@ -390,8 +390,23 @@
     if (!ready()) return null;
     const stamp=`${state.meta?.updated_at_utc||''}:${mode}`;
     if (CACHE.has(stamp)) return CACHE.get(stamp);
-    const anchor={key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure Fantaszy Szentre expected value.'};
-    const result=build(allClubIds(),anchor,{},[],{},-Infinity,mode);
+
+    const engine=window.FantaszySzentreEngine;
+    const result=engine?.optimizeFreeHitSquad
+      ? engine.optimizeFreeHitSquad({
+          players:FS30.strictPlayers(),
+          fixtures:state.fixtures||[],
+          nextGw:Number(state.nextEvents?.[0]?.id||0),
+          mode,
+          budget:BUDGET,
+          beamWidth:140,
+        })
+      : build(
+          allClubIds(),
+          {key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure Fantaszy Szentre expected value.'},
+          {},[],{},-Infinity,mode
+        );
+
     if(CACHE.size>4)CACHE.clear();
     CACHE.set(stamp,result);
     return result;

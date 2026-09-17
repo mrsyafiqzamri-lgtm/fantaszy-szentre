@@ -29,44 +29,15 @@
 
   function ensure() {
     const c = contract();
-    if (!c.ok || !Array.isArray(state?.players) || !Array.isArray(state?.projectionData?.players)) return false;
+    const engine = sharedEngine();
+    if (!c.ok || !engine?.applyProjectionSnapshot) return false;
 
-    const map = new Map(state.projectionData.players.map(p => [Number(p.id), p]));
-    let valid = 0;
-
-    state.players.forEach(p => {
-      const m = map.get(Number(p.id));
-      p._sz30Valid = false;
-      if (!m || m.model_version !== EXPECTED || !Array.isArray(m.xp)) return;
-
-      const x = m.xp.slice(0,4).map(Number);
-      while (x.length < 4) x.push(0);
-
-      p.xp = x;
-      p.xp4 = n(m.xp4 ?? x.reduce((a,b)=>a+b,0));
-      p.xmins = n(m.xmins);
-      p.ceiling = n(m.ceiling_gw1 ?? x[0]);
-      p.captainScore = n(m.captain_score);
-      p.captainSentre = n(m.captain_sentre);
-      p.captainEligible = Boolean(m.captain_eligible);
-      p.lineupScore = n(m.lineup_score);
-      p.sentreScore = n(m.sentre_score);
-      p.sentreLabel = m.sentre_label || '';
-      p.fixtureQualityScore = n(m.fixture_quality_score);
-      p.minutesSecurityScore = n(m.minutes_security_score);
-      p.riskScore = n(m.risk_score);
-      p.roleSetPiecesScore = n(m.role_set_pieces_score);
-      p.modelVersion = m.model_version;
-      p.modelComponents = {
-        player: m.sentre_components || {},
-        captain: m.captain_components || {},
-        lineup: m.lineup_components || {},
-      };
-      p._sz30Valid = true;
-      valid += 1;
+    const result = engine.applyProjectionSnapshot({
+      players: state?.players || [],
+      projectionData: state?.projectionData || {},
+      expectedModel: EXPECTED,
     });
-
-    return valid > 0;
+    return Boolean(result?.ok);
   }
 
   function strictPlayers() {
