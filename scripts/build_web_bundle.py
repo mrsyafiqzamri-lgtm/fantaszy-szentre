@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAYER_FIELDS = [
     "id", "first_name", "second_name", "web_name", "team", "element_type",
     "now_cost", "selected_by_percent", "transfers_in_event",
-    "transfers_out_event", "status", "news", "chance_of_playing_next_round",
+    "transfers_out_event", "status", "news", "news_added", "chance_of_playing_next_round",
     "ep_next", "points_per_game", "minutes", "cost_change_start",
 ]
 
