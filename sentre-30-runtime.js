@@ -3,7 +3,6 @@
   'use strict';
 
   const EXPECTED = 'SZxP 3.0 Commercial Core';
-  const CAPTAIN_CLOSE_XP = 0.30;
   const n = v => Number(v || 0);
   const clamp = (v, lo=0, hi=100) => Math.max(lo, Math.min(hi, n(v)));
   const xpAt = (p, h=0) => n(p?.xp?.[h]);
@@ -86,86 +85,32 @@
       .filter(Boolean);
   }
 
-  function lineupMetric(p, horizon=0) {
-    if (horizon === 0) return n(p.lineupScore) + xpAt(p,0) * 0.001;
-    return xpAt(p,horizon);
+  function sharedEngine() {
+    return window.FantaszySzentreEngine || null;
   }
 
   function bestXI(players, horizon=0) {
-    const pool = (players || []).filter(p => p?._sz30Valid && p.status !== 'u');
-    const by = {
-      1: pool.filter(p => pos(p)===1).sort((a,b)=>lineupMetric(b,horizon)-lineupMetric(a,horizon)),
-      2: pool.filter(p => pos(p)===2).sort((a,b)=>lineupMetric(b,horizon)-lineupMetric(a,horizon)),
-      3: pool.filter(p => pos(p)===3).sort((a,b)=>lineupMetric(b,horizon)-lineupMetric(a,horizon)),
-      4: pool.filter(p => pos(p)===4).sort((a,b)=>lineupMetric(b,horizon)-lineupMetric(a,horizon)),
-    };
-    if (!by[1].length) return {xi:[], formation:'—', projected:0, decisionScore:0, captain:null, vice:null};
-
-    let best = null;
-    for (let d=3; d<=5; d++) {
-      for (let m=2; m<=5; m++) {
-        for (let f=1; f<=3; f++) {
-          if (d+m+f !== 10) continue;
-          if (by[2].length<d || by[3].length<m || by[4].length<f) continue;
-          const xi = [by[1][0], ...by[2].slice(0,d), ...by[3].slice(0,m), ...by[4].slice(0,f)];
-          const decisionScore = xi.reduce((s,p)=>s+lineupMetric(p,horizon),0);
-          const projected = xi.reduce((s,p)=>s+xpAt(p,horizon),0);
-          if (!best || decisionScore > best.decisionScore + 1e-9 ||
-              (Math.abs(decisionScore-best.decisionScore)<1e-9 && projected>best.projected)) {
-            best = {xi, formation:`${d}-${m}-${f}`, projected, decisionScore};
-          }
-        }
-      }
+    const engine = sharedEngine();
+    if (!engine) {
+      return {
+        xi:[], formation:'—', projected:0, decisionScore:0,
+        captain:null, vice:null, captainReason:'Fantaszy Szentre Engine unavailable.',
+        projectedWithCaptain:0
+      };
     }
-    if (!best) return {xi:[], formation:'—', projected:0, decisionScore:0, captain:null, vice:null};
-    const caps = selectCaptain(best.xi, horizon);
-    return {...best, ...caps, projectedWithCaptain:best.projected + (caps.captain ? xpAt(caps.captain,horizon) : 0)};
-  }
-
-  function chooseCaptainFrom(pool, horizon=0) {
-    if (!pool.length) return null;
-    if (horizon > 0) {
-      return [...pool].sort((a,b)=>xpAt(b,horizon)-xpAt(a,horizon) || n(b.xmins)-n(a.xmins))[0];
-    }
-
-    const eligible = pool.filter(p => p._sz30Valid && p.captainEligible && p.status !== 'u' && xpAt(p,0)>0);
-    if (!eligible.length) return null;
-    const maxXp = Math.max(...eligible.map(p=>xpAt(p,0)));
-    const close = eligible.filter(p => maxXp - xpAt(p,0) <= CAPTAIN_CLOSE_XP + 1e-9);
-
-    return close.sort((a,b)=>
-      n(b.captainSentre)-n(a.captainSentre) ||
-      xpAt(b,0)-xpAt(a,0) ||
-      n(b.xmins)-n(a.xmins)
-    )[0];
+    return engine.bestXI(players || [], horizon);
   }
 
   function selectCaptain(players, horizon=0) {
-    const captain = chooseCaptainFrom(players || [], horizon);
-    const remaining = (players || []).filter(p => !captain || Number(p.id)!==Number(captain.id));
-    const vice = chooseCaptainFrom(remaining, horizon);
-
-    let reason = 'No captain-eligible player.';
-    if (captain) {
-      const maxXp = Math.max(...(players || []).filter(p => horizon>0 || p.captainEligible).map(p=>xpAt(p,horizon)));
-      const gap = maxXp - xpAt(captain,horizon);
-      reason = horizon > 0
-        ? 'Highest projected points for this horizon.'
-        : gap <= 1e-9
-          ? 'Highest projected points; Captain Szentre only resolves close ties.'
-          : `Within ${CAPTAIN_CLOSE_XP.toFixed(2)} xP of the leader; Captain Szentre broke the close call.`;
-    }
-    return {captain, vice, captainReason:reason, closeXp:CAPTAIN_CLOSE_XP};
+    const engine = sharedEngine();
+    return engine
+      ? engine.selectCaptain(players || [], horizon)
+      : {captain:null, vice:null, captainReason:'Fantaszy Szentre Engine unavailable.', closeXp:0};
   }
 
   function benchOrder(squad, xi) {
-    const ids = new Set((xi || []).map(p=>Number(p.id)));
-    const bench = (squad || []).filter(p=>!ids.has(Number(p.id)));
-    const gk = bench.filter(p=>pos(p)===1);
-    const out = bench.filter(p=>pos(p)!==1).sort((a,b)=>
-      n(b.lineupScore)-n(a.lineupScore) || xpAt(b,0)-xpAt(a,0)
-    );
-    return [...out, ...gk];
+    const engine = sharedEngine();
+    return engine ? engine.benchOrder(squad || [], xi || []) : [];
   }
 
   function fourGwProjection(players) {
@@ -359,7 +304,7 @@
 
   window.FS30 = {
     expectedModel: EXPECTED,
-    captainCloseXp: CAPTAIN_CLOSE_XP,
+    captainCloseXp: window.FantaszySzentreEngine?.captainCloseXp ?? 0.30,
     contract,
     ensure,
     strictPlayers,
