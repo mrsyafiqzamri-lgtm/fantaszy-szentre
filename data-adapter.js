@@ -6,7 +6,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '20260913-canonical-fh2';
+  const VERSION = '20260918-canonical-engine1';
   const nativeFetch = window.fetch.bind(window);
   const FPL_ORIGIN = 'https://fantasy.premierleague.com/api';
 
@@ -16,11 +16,12 @@
 
   const n = v => Number(v || 0);
 
+  function sharedEngine() {
+    return window.FantaszySzentreEngine || null;
+  }
+
   function isFreeHitName(value) {
-    const x = String(value || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '');
-    return x.includes('free') && x.includes('hit');
+    return Boolean(sharedEngine()?.isFreeHitName?.(value));
   }
 
   function localPath(url) {
@@ -105,35 +106,38 @@
   }
 
   function freeHitEvents(history) {
-    const set = new Set();
-    for (const chip of history?.chips || []) {
-      if (isFreeHitName(chip?.name || chip?.chip)) {
-        const gw = Number(chip?.event);
-        if (gw) set.add(gw);
-      }
-    }
-    return set;
+    return sharedEngine()?.freeHitEvents?.(history) || new Set();
   }
 
   function validPicks(data) {
     return Boolean(data && Array.isArray(data.picks) && data.picks.length === 15);
   }
 
-  async function findPermanentSource(entryId, freeHitGw, history, forceFresh) {
-    const fhEvents = freeHitEvents(history);
+  async function findPermanentSource(entryId, freeHitGw, current, history, forceFresh) {
+    const engine = sharedEngine();
+    if (!engine?.resolveCanonicalSquad) return null;
 
+    const candidates = [];
     for (let gw = Number(freeHitGw) - 1; gw >= 1; gw--) {
-      if (fhEvents.has(gw)) continue;
-
       const prior = await fetchLocalJSON(
         `./data/entry/${entryId}/event/${gw}/picks.json`,
         forceFresh
       );
 
       if (!validPicks(prior)) continue;
-      if (isFreeHitName(prior.active_chip)) continue;
+      candidates.push({gw, data:prior});
 
-      return { gw, data: prior };
+      const resolved = engine.resolveCanonicalSquad({
+        entryId,
+        requestedGw:freeHitGw,
+        current,
+        history,
+        priorCandidates:candidates
+      });
+
+      if (resolved?.ok && resolved?.reverted && resolved?.source) {
+        return {gw:resolved.sourceGw, data:resolved.source};
+      }
     }
     return null;
   }
@@ -168,26 +172,37 @@
 
   async function canonicalisePicks(entryId, gw, current, forceFresh) {
     const history = await getHistory(entryId, forceFresh);
+    const engine = sharedEngine();
 
-    // History is the authoritative chip source. active_chip is only a fallback.
-    const fhEvents = freeHitEvents(history);
-    const isFH = fhEvents.has(Number(gw)) || isFreeHitName(current?.active_chip);
-
-    if (!isFH) {
+    if (!engine?.resolveCanonicalSquad) {
       resolutions.set(`${entryId}:${gw}`, {
-        entryId, requestedGw: gw, sourceGw: gw, reverted: false
+        entryId, requestedGw:gw, sourceGw:null, reverted:false,
+        error:'FS_ENGINE_CANONICAL_RESOLVER_UNAVAILABLE'
+      });
+      return null;
+    }
+
+    const initial = engine.resolveCanonicalSquad({
+      entryId, requestedGw:gw, current, history, priorCandidates:[]
+    });
+
+    if (initial?.ok && !initial?.reverted) {
+      resolutions.set(`${entryId}:${gw}`, {
+        entryId, requestedGw:gw, sourceGw:gw, reverted:false
       });
       return current;
     }
 
-    const source = await findPermanentSource(entryId, gw, history, forceFresh);
+    const source = await findPermanentSource(
+      entryId, gw, current, history, forceFresh
+    );
 
     // Trust rule: never pass a one-week Free Hit squad into planning if
     // the permanent source cannot be established.
     if (!source) {
       resolutions.set(`${entryId}:${gw}`, {
-        entryId, requestedGw: gw, sourceGw: null, reverted: false,
-        error: 'FREE_HIT_PERMANENT_SQUAD_UNAVAILABLE'
+        entryId, requestedGw:gw, sourceGw:null, reverted:false,
+        error:'FREE_HIT_PERMANENT_SQUAD_UNAVAILABLE'
       });
       return null;
     }

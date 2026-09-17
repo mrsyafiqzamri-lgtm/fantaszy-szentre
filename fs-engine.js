@@ -23,6 +23,15 @@
     aggressive: Object.freeze({label:'Aggressive', rollThreshold:66, hitThreshold:78, closeTolerance:.35}),
   });
 
+  const CHIP_MIN_PLAY = 76;
+
+  const CHIP_WEIGHTS = Object.freeze({
+    WC: Object.freeze({optimisationGain:.30, problemPlayers:.20, sixGwGain:.20, fixtureSwing:.10, structureBudget:.10, timingExpiry:.10}),
+    FH: Object.freeze({optimalVsCurrentGain:.45, blankDgwAdvantage:.20, unavailablePoorFixture:.15, captainImprovement:.10, futureOpportunityCost:.10}),
+    BB: Object.freeze({benchPoints:.50, minutesSecurity:.20, fixtureQuality:.15, futureOpportunityCost:.10, expiryPressure:.05}),
+    TC: Object.freeze({captainProjection:.40, ceiling:.25, minutesCertainty:.15, fixtureQuality:.10, futureOpportunityCost:.10}),
+  });
+
   const LEGAL_FORMATIONS = Object.freeze([
     Object.freeze({ DEF: 3, MID: 4, FWD: 3 }),
     Object.freeze({ DEF: 3, MID: 5, FWD: 2 }),
@@ -348,6 +357,118 @@
     };
   }
 
+
+  function pct(value) {
+    return Math.max(0, Math.min(100, finite(value)));
+  }
+
+  function weightedOpportunity(input = {}, weights = {}) {
+    const score = Object.entries(weights)
+      .reduce((sum, [key, weight]) => sum + weight * pct(input?.[key]), 0);
+    return Number(score.toFixed(2));
+  }
+
+  function wildcardOpportunity(input = {}) {
+    return weightedOpportunity(input, CHIP_WEIGHTS.WC);
+  }
+
+  function freeHitOpportunity(input = {}) {
+    return weightedOpportunity(input, CHIP_WEIGHTS.FH);
+  }
+
+  function benchBoostOpportunity(input = {}) {
+    return weightedOpportunity(input, CHIP_WEIGHTS.BB);
+  }
+
+  function tripleCaptainOpportunity(input = {}) {
+    return weightedOpportunity(input, CHIP_WEIGHTS.TC);
+  }
+
+  function resolveChipConflict(scores = {}, minPlay = CHIP_MIN_PLAY) {
+    const rows = Object.entries(scores)
+      .map(([chip, score]) => ({chip, score:finite(score)}))
+      .sort((a, b) => b.score - a.score);
+
+    if (!rows.length || rows[0].score < finite(minPlay, CHIP_MIN_PLAY)) {
+      return {action:'NO CHIP', best:rows[0] || null};
+    }
+    return {action:`PLAY ${rows[0].chip}`, best:rows[0]};
+  }
+
+  function evaluateChips({wildcard = {}, freeHit = {}, benchBoost = {}, tripleCaptain = {}, minPlay = CHIP_MIN_PLAY} = {}) {
+    const scores = {
+      WC: wildcardOpportunity(wildcard),
+      FH: freeHitOpportunity(freeHit),
+      BB: benchBoostOpportunity(benchBoost),
+      TC: tripleCaptainOpportunity(tripleCaptain),
+    };
+    const resolved = resolveChipConflict(scores, minPlay);
+    return {...resolved, scores};
+  }
+
+  function normalizeChipName(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function isFreeHitName(value) {
+    const normalized = normalizeChipName(value);
+    return normalized.includes('free') && normalized.includes('hit');
+  }
+
+  function freeHitEvents(history = {}) {
+    const events = new Set();
+    for (const chip of history?.chips || []) {
+      if (!isFreeHitName(chip?.name || chip?.chip)) continue;
+      const gw = Number(chip?.event);
+      if (gw) events.add(gw);
+    }
+    return events;
+  }
+
+  function validSquadPicks(payload) {
+    return Boolean(payload && Array.isArray(payload.picks) && payload.picks.length === 15);
+  }
+
+  function isFreeHitEvent(history = {}, gw = 0, activeChip = '') {
+    return freeHitEvents(history).has(Number(gw)) || isFreeHitName(activeChip);
+  }
+
+  function resolveCanonicalSquad({entryId = 0, requestedGw = 0, current = null, history = {}, priorCandidates = []} = {}) {
+    const gw = Number(requestedGw) || 0;
+    const id = Number(entryId) || 0;
+
+    if (!validSquadPicks(current)) {
+      return {ok:false, reason:'INVALID_CURRENT_SQUAD', entryId:id, requestedGw:gw};
+    }
+
+    if (!isFreeHitEvent(history, gw, current?.active_chip)) {
+      return {
+        ok:true, entryId:id, requestedGw:gw, sourceGw:gw,
+        freeHitGw:0, reverted:false, current, source:current
+      };
+    }
+
+    const candidates = (priorCandidates || [])
+      .filter(row => row && validSquadPicks(row.data))
+      .slice()
+      .sort((a, b) => Number(b.gw || 0) - Number(a.gw || 0));
+
+    for (const candidate of candidates) {
+      const sourceGw = Number(candidate.gw) || 0;
+      if (!sourceGw || sourceGw >= gw) continue;
+      if (isFreeHitEvent(history, sourceGw, candidate.data?.active_chip)) continue;
+      return {
+        ok:true, entryId:id, requestedGw:gw, sourceGw,
+        freeHitGw:gw, reverted:true, current, source:candidate.data
+      };
+    }
+
+    return {
+      ok:false, reason:'FREE_HIT_PERMANENT_SQUAD_UNAVAILABLE',
+      entryId:id, requestedGw:gw, freeHitGw:gw
+    };
+  }
+
   function benchOrder(squad = [], xi = []) {
     const ids = new Set(xi.map(player => playerId(player)));
     const bench = squad.filter(player => !ids.has(playerId(player)));
@@ -391,5 +512,18 @@
     transferVerdict,
     scoreTransfer,
     transferDecision,
+    chipMinPlay: CHIP_MIN_PLAY,
+    chipWeights: CHIP_WEIGHTS,
+    wildcardOpportunity,
+    freeHitOpportunity,
+    benchBoostOpportunity,
+    tripleCaptainOpportunity,
+    resolveChipConflict,
+    evaluateChips,
+    normalizeChipName,
+    isFreeHitName,
+    freeHitEvents,
+    isFreeHitEvent,
+    resolveCanonicalSquad,
   });
 })();

@@ -223,8 +223,8 @@
   }
 
   function chipPlan(td) {
-    const core = window.SzentreCommercialCore;
-    if (!ensure() || !core) return {action:'NO CHIP', reason:'Fantaszy Szentre chip engine unavailable.', scores:{}};
+    const engine = sharedEngine();
+    if (!ensure() || !engine?.evaluateChips) return {action:'NO CHIP', reason:'Fantaszy Szentre chip engine unavailable.', scores:{}};
 
     const squad = squadFromTeam(td);
     const current = bestXI(squad,0);
@@ -257,41 +257,40 @@
     const fixtureCount = fixtures.length;
     const blankDgw = fixtureCount !== 10 ? 90 : 15;
 
-    const wc = core.wildcardOpportunity({
-      optimisationGain: gainScore(wcGain4,28),
-      problemPlayers: clamp(squadProblems/5*100),
-      sixGwGain: gainScore(wcGain4,32),
-      fixtureSwing: clamp(40 + squadProblems*10),
-      structureBudget: 50,
-      timingExpiry: 50
+    const resolved = engine.evaluateChips({
+      wildcard: {
+        optimisationGain: gainScore(wcGain4,28),
+        problemPlayers: clamp(squadProblems/5*100),
+        sixGwGain: gainScore(wcGain4,32),
+        fixtureSwing: clamp(40 + squadProblems*10),
+        structureBudget: 50,
+        timingExpiry: 50
+      },
+      freeHit: {
+        optimalVsCurrentGain: gainScore(fhGain,12),
+        blankDgwAdvantage: blankDgw,
+        unavailablePoorFixture: clamp(squadProblems/5*100),
+        captainImprovement: gainScore(capImprove,3),
+        futureOpportunityCost: 55
+      },
+      benchBoost: {
+        benchPoints: clamp(benchXp/12*100),
+        minutesSecurity: clamp(benchMins/90*100),
+        fixtureQuality: bench.length ? bench.reduce((s,p)=>s+n(p.fixtureQualityScore),0)/bench.length : 0,
+        futureOpportunityCost: 55,
+        expiryPressure: 50
+      },
+      tripleCaptain: {
+        captainProjection: clamp(currentCaptainXp/10*100),
+        ceiling: clamp(currentCeiling/13*100),
+        minutesCertainty: captain ? clamp(n(captain.xmins)/90*100) : 0,
+        fixtureQuality: currentFixture,
+        futureOpportunityCost: tcFutureCost
+      },
+      minPlay: 76
     });
 
-    const fh = core.freeHitOpportunity({
-      optimalVsCurrentGain: gainScore(fhGain,12),
-      blankDgwAdvantage: blankDgw,
-      unavailablePoorFixture: clamp(squadProblems/5*100),
-      captainImprovement: gainScore(capImprove,3),
-      futureOpportunityCost: 55
-    });
-
-    const bb = core.benchBoostOpportunity({
-      benchPoints: clamp(benchXp/12*100),
-      minutesSecurity: clamp(benchMins/90*100),
-      fixtureQuality: bench.length ? bench.reduce((s,p)=>s+n(p.fixtureQualityScore),0)/bench.length : 0,
-      futureOpportunityCost: 55,
-      expiryPressure: 50
-    });
-
-    const tc = core.tripleCaptainOpportunity({
-      captainProjection: clamp(currentCaptainXp/10*100),
-      ceiling: clamp(currentCeiling/13*100),
-      minutesCertainty: captain ? clamp(n(captain.xmins)/90*100) : 0,
-      fixtureQuality: currentFixture,
-      futureOpportunityCost: tcFutureCost
-    });
-
-    const scores = {WC:wc, FH:fh, BB:bb, TC:tc};
-    const resolved = core.resolveChipConflict(scores,76);
+    const scores = resolved.scores || {};
     return {
       action:resolved.action,
       best:resolved.best,
