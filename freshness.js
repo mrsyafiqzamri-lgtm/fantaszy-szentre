@@ -2,6 +2,7 @@
 (() => {
   'use strict';
 
+  const PUBLIC_ENGINE_NAME='Fantaszy Szentre Engine';
   const FRESH_MIN=90;
   const STALE_MIN=180;
 
@@ -51,7 +52,7 @@
     let notice=overview.querySelector('#dataFreshnessNotice');
     if(!notice){notice=document.createElement('div');notice.id='dataFreshnessNotice';root.prepend(notice)}
     notice.className=`notice ${x.level==='stale'?'warn':''}`;
-    notice.textContent=`${x.label} · Fantaszy Szentre Engine updated ${x.updated} (${ageText(x.ageMin)}). Hourly data bundle; refresh checks the newest published snapshot.`;
+    notice.textContent=`${x.label} · ${PUBLIC_ENGINE_NAME} updated ${x.updated} (${ageText(x.ageMin)}). Hourly data bundle; refresh checks the newest published snapshot.`;
   }
 
   window.addEventListener('fs:data-ready',()=>requestAnimationFrame(()=>paint(currentMeta())));
