@@ -401,11 +401,7 @@
           budget:BUDGET,
           beamWidth:140,
         })
-      : build(
-          allClubIds(),
-          {key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure Fantaszy Szentre expected value.'},
-          {},[],{},-Infinity,mode
-        );
+      : {error:'Fantaszy Szentre Engine is unavailable.'};
 
     if(CACHE.size>4)CACHE.clear();
     CACHE.set(stamp,result);
