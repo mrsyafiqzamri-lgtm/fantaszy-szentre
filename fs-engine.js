@@ -1,10 +1,28 @@
 (() => {
   'use strict';
 
-  // Fantaszy Szentre Engine — canonical captain / XI / bench decisions.
+  // Fantaszy Szentre Engine — canonical captain / XI / bench / transfer decisions.
   // Keep this module free of Personal portfolio profiling and product/UI logic.
 
   const CAPTAIN_CLOSE_XP = 0.30;
+
+  // Canonical transfer decision rules. Personal portfolio profiling stays
+  // outside this module and only supplies the requested risk profile.
+  const TRANSFER_WEIGHTS = Object.freeze({
+    nextGain: .35,
+    fourGain: .25,
+    costHit: .15,
+    fixtureSwing: .10,
+    minutesAvailability: .10,
+    structureFlexibility: .05,
+  });
+
+  const TRANSFER_RISK = Object.freeze({
+    safe: Object.freeze({label:'Safe', rollThreshold:74, hitThreshold:88, closeTolerance:1.00}),
+    balanced: Object.freeze({label:'Balanced', rollThreshold:70, hitThreshold:82, closeTolerance:.60}),
+    aggressive: Object.freeze({label:'Aggressive', rollThreshold:66, hitThreshold:78, closeTolerance:.35}),
+  });
+
   const LEGAL_FORMATIONS = Object.freeze([
     Object.freeze({ DEF: 3, MID: 4, FWD: 3 }),
     Object.freeze({ DEF: 3, MID: 5, FWD: 2 }),
@@ -271,6 +289,65 @@
     );
   }
 
+  function transferComponentScores(input = {}) {
+    const nextGain = finite(input.nextGain);
+    const fourGain = finite(input.fourGain);
+    const hit = Math.max(0, finite(input.hit));
+    const fixtureSwing = finite(input.fixtureSwing);
+    const mins = finite(input.minutesAvailabilityImprovement);
+    const structure = finite(input.structureFlexibility, 50);
+
+    return {
+      nextGain: Math.max(0, Math.min(100, 50 + nextGain * 11)),
+      fourGain: Math.max(0, Math.min(100, 50 + fourGain * 4.5)),
+      costHit: hit <= 0 ? 100 : Math.max(0, Math.min(100, 100 - hit * 13)),
+      fixtureSwing: Math.max(0, Math.min(100, 50 + fixtureSwing * 18)),
+      minutesAvailability: Math.max(0, Math.min(100, 50 + mins * 1.2)),
+      structureFlexibility: Math.max(0, Math.min(100, structure)),
+    };
+  }
+
+  function transferVerdict(score) {
+    const value = finite(score);
+    if (value >= 90) return 'PRIORITY MOVE';
+    if (value >= 80) return 'STRONG MOVE';
+    if (value >= 70) return 'GOOD MOVE';
+    if (value >= 60) return 'OPTIONAL';
+    if (value >= 50) return 'HOLD PREFERRED';
+    return 'AVOID';
+  }
+
+  function scoreTransfer(input = {}) {
+    const components = transferComponentScores(input);
+    const score = Object.entries(TRANSFER_WEIGHTS)
+      .reduce((sum, [key, weight]) => sum + weight * components[key], 0);
+
+    return {
+      score: Number(score.toFixed(2)),
+      components,
+      verdict: transferVerdict(score),
+    };
+  }
+
+  function transferDecision({score = 0, hit = 0, urgent = false, risk = 'balanced'} = {}) {
+    const profile = TRANSFER_RISK[risk] || TRANSFER_RISK.balanced;
+    const threshold = finite(hit) > 0 ? profile.hitThreshold : profile.rollThreshold;
+
+    // Availability urgency may lower the action bar, but it never makes a weak
+    // route automatically acceptable. This preserves the current Personal rule.
+    const effective = urgent ? Math.max(64, threshold - 6) : threshold;
+
+    if (finite(score) < effective) {
+      return {action:'ROLL', threshold:effective, profile:profile.label};
+    }
+
+    return {
+      action: finite(hit) > 0 ? `MOVE · -${finite(hit)}` : 'MOVE',
+      threshold:effective,
+      profile:profile.label,
+    };
+  }
+
   function benchOrder(squad = [], xi = []) {
     const ids = new Set(xi.map(player => playerId(player)));
     const bench = squad.filter(player => !ids.has(playerId(player)));
@@ -308,5 +385,11 @@
     bestXI,
     benchOrder,
     isLegalXI,
+    transferWeights: TRANSFER_WEIGHTS,
+    transferRiskProfiles: TRANSFER_RISK,
+    transferComponentScores,
+    transferVerdict,
+    scoreTransfer,
+    transferDecision,
   });
 })();

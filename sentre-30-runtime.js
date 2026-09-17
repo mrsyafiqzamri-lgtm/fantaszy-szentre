@@ -154,7 +154,7 @@
       const baseNext = bestXI(base,0);
       const base4 = fourGwProjection(base);
       const raw = optimiseTransferScenarios(td,'4gw');
-      const core = window.SzentreCommercialCore;
+      const engine = sharedEngine();
       const ft = inferredFreeTransfers(td);
       const risk = riskProfileForTeam(td);
 
@@ -175,8 +175,8 @@
           const bankAfter = n(r.bank ?? td.picks?.entry_history?.bank);
           const structure = clamp(50 + bankAfter*1.5, 35, 85);
 
-          const scored = core?.transferSzentre
-            ? core.transferSzentre({
+          const scored = engine?.scoreTransfer
+            ? engine.scoreTransfer({
                 nextGain, fourGain, hit,
                 fixtureSwing: fixtureSwing/20,
                 minutesAvailabilityImprovement: mins,
@@ -185,8 +185,8 @@
             : {score:0, verdict:'UNAVAILABLE'};
 
           const urgent = moves.some(m => m.out.status!=='a' || n(m.out.xmins)<45);
-          const decision = core?.transferDecision
-            ? core.transferDecision({score:scored.score, hit, urgent, risk})
+          const decision = engine?.transferDecision
+            ? engine.transferDecision({score:scored.score, hit, urgent, risk})
             : {action:'ROLL', threshold:999, profile:risk};
 
           return {
