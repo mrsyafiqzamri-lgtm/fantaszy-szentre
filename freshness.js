@@ -51,8 +51,7 @@
     let notice=overview.querySelector('#dataFreshnessNotice');
     if(!notice){notice=document.createElement('div');notice.id='dataFreshnessNotice';root.prepend(notice)}
     notice.className=`notice ${x.level==='stale'?'warn':''}`;
-    const model=meta?.model_version||currentMeta()?.model_version||'SZxP';
-    notice.textContent=`${x.label} · ${model} updated ${x.updated} (${ageText(x.ageMin)}). Hourly data bundle; refresh checks the newest published snapshot.`;
+    notice.textContent=`${x.label} · Fantaszy Szentre Engine updated ${x.updated} (${ageText(x.ageMin)}). Hourly data bundle; refresh checks the newest published snapshot.`;
   }
 
   window.addEventListener('fs:data-ready',()=>requestAnimationFrame(()=>paint(currentMeta())));
