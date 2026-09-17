@@ -58,7 +58,7 @@
     const pool = legalPool(ids);
     for (const [k,count] of Object.entries(POS_COUNTS)) {
       if (pool.filter(p=>pos(p)===Number(k)).length < count) {
-        return 'Not enough eligible 3.0 players for a legal 15.';
+        return 'Not enough eligible players for a legal 15.';
       }
     }
     return '';
@@ -116,7 +116,7 @@
 
     const scripts=[{
       key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,
-      keyBet:'Pure SZxP 3.0 expected-value team.'
+      keyBet:'Pure Fantaszy Szentre expected-value team.'
     }];
 
     if (paired.length) {
@@ -178,7 +178,7 @@
       scripts.push({
         key:`contrarian-${scripts.length}`,label:'Contrarian Ceiling',kind:'contrarian',
         maxDrop:4.5,diversity:1.05,
-        keyBet:'High-ceiling 3.0 route with lower overlap to earlier options.'
+        keyBet:'High-ceiling route with lower overlap to earlier options.'
       });
     }
 
@@ -367,7 +367,7 @@
         }
       }
 
-      if (!children.length) return {error:'No legal 3.0 squad found within £100.0m.'};
+      if (!children.length) return {error:'No legal squad found within £100.0m.'};
       const dedup=new Map();
       for (const c of children) {
         const key=[...c.ids].sort((a,b)=>a-b).join(',');
@@ -390,7 +390,7 @@
     if (!ready()) return null;
     const stamp=`${state.meta?.updated_at_utc||''}:${mode}`;
     if (CACHE.has(stamp)) return CACHE.get(stamp);
-    const anchor={key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure SZxP 3.0 expected value.'};
+    const anchor={key:'anchor',label:'Anchor',kind:'anchor',maxDrop:0,diversity:0,keyBet:'Pure Fantaszy Szentre expected value.'};
     const result=build(allClubIds(),anchor,{},[],{},-Infinity,mode);
     if(CACHE.size>4)CACHE.clear();
     CACHE.set(stamp,result);
@@ -463,7 +463,7 @@
 
   function best15Markup() {
     const s=getBest15('next');
-    if (!s) return `<div class="fs30-contract-bad">Waiting for verified 3.0 production data.</div>`;
+    if (!s) return `<div class="fs30-contract-bad">Waiting for verified Fantaszy Szentre Engine data.</div>`;
     if (s.error) return `<div class="fs30-contract-bad">${esc(s.error)}</div>`;
     return `<div class="fs30-week-summary">
       <div><span>Projected</span><b>${fmt(s.projected)}</b></div>
@@ -471,9 +471,9 @@
       <div><span>Formation</span><b>${esc(s.formation)}</b></div>
       <div><span>Captain</span><b>${esc(s.captain?.web_name||'—')}</b></div>
     </div>
-    <div class="fs30-note">Best projected legal 15 from SZxP 3.0.</div>
+    <div class="fs30-note">Best projected legal 15 from the Fantaszy Szentre Engine.</div>
     ${pitch(s)}
-    <div class="fs30-section-title"><b>Bench</b><span>3.0 lineup order</span></div>${bench(s)}`;
+    <div class="fs30-section-title"><b>Bench</b><span>lineup order</span></div>${bench(s)}`;
   }
 
   function clubSelector() {
@@ -514,12 +514,12 @@
     const root=document.getElementById('weekly');
     if (!root) return;
     if (!ready()) {
-      root.innerHTML=`<div class="fs-head"><div><div class="eyebrow">Weekly Szentre</div><h1>GW —</h1></div></div><div class="fs30-contract-bad">${esc(FS30?.contract?.().reason||'Waiting for 3.0')}</div>`;
+      root.innerHTML=`<div class="fs-head"><div><div class="eyebrow">Weekly Szentre</div><h1>GW —</h1></div></div><div class="fs30-contract-bad">${esc(FS30?.contract?.().reason||'Waiting for FS Engine')}</div>`;
       return;
     }
     const gw=Number(state.nextEvents?.[0]?.id||0);
     root.innerHTML=`<div class="fs-head">
-      <div><div class="eyebrow">Weekly Szentre · 3.0</div><h1>GW${gw} Weekly Lab</h1></div>
+      <div><div class="eyebrow">Weekly Szentre</div><h1>GW${gw} Weekly Lab</h1></div>
       <div class="fs-meta">Best 15 + prize portfolio<br>independent of Match Predictions</div>
     </div>
     <div class="fs30-tabs">
@@ -540,7 +540,7 @@
     root.querySelector('#fs30BuildFive')?.addEventListener('click',()=>{
       const ids=selected();saveClubs(ids);
       const target=root.querySelector('#fs30FiveResults');
-      target.innerHTML='<div class="fs30-note">Building five coherent 3.0 prize scenarios…</div>';
+      target.innerHTML='<div class="fs30-note">Building five coherent prize scenarios…</div>';
       setTimeout(()=>{target.innerHTML=fiveResults(buildFive(ids))},20);
     });
   }

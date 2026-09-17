@@ -171,7 +171,7 @@
   }
 
   function markup(){
-    if(!ready())return '<div class="fs30-empty">Waiting for verified 3.0 production data.</div>';
+    if(!ready())return '<div class="fs30-empty">Waiting for verified Fantaszy Szentre Engine data.</div>';
     const rows=predictions();
     return `<div class="fs30-match-list">
       ${rows.map(r=>`<div class="fs30-match-row"><b>${esc(r.home)} ${r.homeGoals}–${r.awayGoals} ${esc(r.away)}</b></div>`).join('')||'<div class="fs30-empty">No fixtures found.</div>'}

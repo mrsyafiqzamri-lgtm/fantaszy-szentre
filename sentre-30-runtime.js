@@ -19,12 +19,12 @@
       if (projection.model_version !== EXPECTED || meta.production_model !== EXPECTED) {
         return {
           ok:false,
-          reason:`3.0 contract failed. Feed=${projection.model_version || 'missing'} · production=${meta.production_model || 'missing'}`
+          reason:'Engine verification failed. Refresh the current data feed.'
         };
       }
-      return {ok:true, reason:'SZxP 3.0 production verified.'};
+      return {ok:true, reason:'Fantaszy Szentre Engine verified.'};
     } catch {
-      return {ok:false, reason:'3.0 production state is unavailable.'};
+      return {ok:false, reason:'Fantaszy Szentre Engine state is unavailable.'};
     }
   }
 
@@ -145,14 +145,14 @@
     const remaining = (players || []).filter(p => !captain || Number(p.id)!==Number(captain.id));
     const vice = chooseCaptainFrom(remaining, horizon);
 
-    let reason = 'No 3.0 captain-eligible player.';
+    let reason = 'No captain-eligible player.';
     if (captain) {
       const maxXp = Math.max(...(players || []).filter(p => horizon>0 || p.captainEligible).map(p=>xpAt(p,horizon)));
       const gap = maxXp - xpAt(captain,horizon);
       reason = horizon > 0
         ? 'Highest projected points for this horizon.'
         : gap <= 1e-9
-          ? 'Highest calibrated SZxP; Captain Szentre only resolves close ties.'
+          ? 'Highest projected points; Captain Szentre only resolves close ties.'
           : `Within ${CAPTAIN_CLOSE_XP.toFixed(2)} xP of the leader; Captain Szentre broke the close call.`;
     }
     return {captain, vice, captainReason:reason, closeXp:CAPTAIN_CLOSE_XP};
@@ -257,7 +257,7 @@
       if (!move) {
         return {
           action:'ROLL', ft, risk,
-          reason:'No searched route clears the SZxP 3.0 Commercial Transfer threshold.',
+          reason:'No searched route clears the Fantaszy Szentre transfer threshold.',
           alternatives:rows.slice(0,3)
         };
       }
@@ -268,8 +268,8 @@
         alternatives:rows.filter(r=>r!==move).slice(0,3)
       };
     } catch (e) {
-      console.warn('SZxP 3.0 transfer plan failed',e);
-      return {action:'UNAVAILABLE', reason:'Could not build a strict 3.0 transfer plan.', alternatives:[]};
+      console.warn('Fantaszy Szentre transfer plan failed',e);
+      return {action:'UNAVAILABLE', reason:'Could not build the Fantaszy Szentre transfer plan.', alternatives:[]};
     }
   }
 
@@ -279,7 +279,7 @@
 
   function chipPlan(td) {
     const core = window.SzentreCommercialCore;
-    if (!ensure() || !core) return {action:'NO CHIP', reason:'3.0 chip engine unavailable.', scores:{}};
+    if (!ensure() || !core) return {action:'NO CHIP', reason:'Fantaszy Szentre chip engine unavailable.', scores:{}};
 
     const squad = squadFromTeam(td);
     const current = bestXI(squad,0);
@@ -352,8 +352,8 @@
       best:resolved.best,
       scores,
       reason:resolved.action==='NO CHIP'
-        ? `No chip clears the 3.0 play threshold. Best current opportunity: ${resolved.best?.chip || '—'} ${resolved.best ? resolved.best.score.toFixed(0) : '—'}/100.`
-        : `${resolved.best.chip} is the strongest 3.0 opportunity at ${resolved.best.score.toFixed(0)}/100.`
+        ? `No chip clears the play threshold. Best current opportunity: ${resolved.best?.chip || '—'} ${resolved.best ? resolved.best.score.toFixed(0) : '—'}/100.`
+        : `${resolved.best.chip} is the strongest opportunity at ${resolved.best.score.toFixed(0)}/100.`
     };
   }
 

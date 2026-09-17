@@ -57,11 +57,12 @@ function cacheSet(key, data) {
 // One-time migration away from the old 3+ MB browser startup cache. Keep all
 // user choices under fs30:*; remove only obsolete data payloads.
 try {
-  const cacheVersion='20260913-fastbundle2';
+  const cacheVersion='20260917-marketnews1';
   if(localStorage.getItem('fs:app-cache-version')!==cacheVersion){
     for(const k of Object.keys(localStorage)){
       if(
         k==='fs:/bootstrap-static/' || k==='fs:/fixtures/' ||
+        k==='fs-local:./data/web-core.json' ||
         k.startsWith('fs-local:./data/szxp') ||
         k.startsWith('fs-local:./data/accuracy') ||
         k.startsWith('fs-local:./data/backtests/')
@@ -237,7 +238,7 @@ function accuracyMarkup() {
     return `<div class="card">
       <div class="stat-label">Model Audit</div>
       <div class="stat-value">GW${state.nextEvents[0]?.id || '—'}</div>
-      <div class="stat-note">First genuine pre-deadline SZxP snapshot is being tracked.</div>
+      <div class="stat-note">First genuine pre-deadline engine snapshot is being tracked.</div>
     </div>`;
   }
   return `<div class="card">
@@ -263,10 +264,10 @@ function gw1BacktestMarkup() {
     </tr>`;
   }).join('');
   return `<div class="section card">
-    <div class="section-head"><h2>GW1 SZxP vs Actual</h2><span class="stat-note">retrospective fit check</span></div>
+    <div class="section-head"><h2>GW1 Projection vs Actual</h2><span class="stat-note">retrospective fit check</span></div>
     <div class="notice warn">This GW1 number is a backcast created after GW1 using post-GW1 data, so it contains hindsight leakage. It is useful for comparison, but it is NOT counted as genuine prediction accuracy. True locked accuracy starts from GW2.</div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Team</th><th>GW1 SZxP</th><th>Actual</th><th>Actual − SZxP</th><th>Chip</th></tr></thead>
+      <thead><tr><th>Team</th><th>GW1 Projection</th><th>Actual</th><th>Actual − Projection</th><th>Chip</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <p class="model-note">Player-level retrospective MAE: ${fmt(bt.player_relevant_mae,2)}. Lower is better, but this GW1 figure is not a clean out-of-sample test.</p>
@@ -285,14 +286,13 @@ function renderOverview() {
   const values = [...state.players]
     .filter(p => p.xmins >= 65 && p.xp4 >= 12)
     .sort((a,b)=>b.value4-a.value4).slice(0,6);
-  const injuryCount = state.players.filter(p => p.status !== 'a' || p.news).length;
-  const modelVersion = state.projectionData?.model_version || 'Fallback';
+  const injuryCount = state.players.filter(p => isCurrentMarketPlayer(p) && (p.status !== 'a' || p.news)).length;
 
   $('#overview').innerHTML = `
     <div class="hero">
       <div class="eyebrow">Fantaszy Szentre</div>
       <h1>Smarter Fantasy Decisions.</h1>
-      <p class="subtext">${esc(modelVersion)} projections for the full player pool, your nine squads, captaincy, market movement and transfer decisions.</p>
+      <p class="subtext">Fantaszy Szentre Engine projections for the full player pool, your nine squads, captaincy, market movement and transfer decisions.</p>
     </div>
 
     <div class="grid stats">
@@ -327,7 +327,7 @@ function renderOverview() {
     <div class="section grid two">
       <div class="card">
         <div class="section-head"><h2>Injury & Availability</h2><span class="stat-note">${injuryCount} flagged</span></div>
-        ${state.players.filter(p=>p.news || p.status!=='a').sort((a,b)=>a.xmins-b.xmins).slice(0,6).map(p=>`
+        ${latestNewsPlayers(state.players).map(p=>`
           <div class="alert-item">
             <div class="alert-copy"><b>${esc(p.web_name)} · ${p.teamCode}</b><span>${esc(p.news || 'Availability flag')}</span></div>
             <span class="badge ${p.xmins<45?'sell':'watch'}">${p.xmins} xMins</span>
@@ -335,10 +335,10 @@ function renderOverview() {
       </div>
 
       <div class="card">
-        <div class="section-head"><h2>SZxP 3.0</h2><span class="stat-note">${state.players.length} players</span></div>
+        <div class="section-head"><h2>Fantaszy Szentre Engine</h2><span class="stat-note">${state.players.length} players</span></div>
         <p class="subtext">Expected minutes + shrunk xG/xA + team attack/defence strength + clean-sheet probability + saves + bonus + defensive contributions when available + next-GW official FPL calibration.</p>
         <div class="notice">Penalty and set-piece bonuses are deliberately excluded until the role is independently verified. We would rather under-model than invent data.</div>
-        <div class="model-note">Before every deadline, GitHub saves the latest projection snapshot. After that Gameweek finishes, the model records MAE, bias and correlation so we can calibrate SZxP using actual evidence.</div>
+        <div class="model-note">Before every deadline, GitHub saves the latest projection snapshot. After that Gameweek finishes, the engine records MAE, bias and correlation so projections can be calibrated using actual evidence.</div>
       </div>
     </div>`;
 }
@@ -368,7 +368,7 @@ function renderPlayers() {
     <div class="hero">
       <div class="eyebrow">Player Szentre</div>
       <h1>Every player. One projection table.</h1>
-      <p class="subtext">Full FPL pool ranked by SZxP 3.0. Switch between next-GW, four-GW, value and captaincy views.</p>
+      <p class="subtext">Full FPL pool ranked by Fantaszy Szentre projections. Switch between next-GW, four-GW, value and captaincy views.</p>
     </div>
     <div class="controls">
       <input class="input" id="playerSearch" placeholder="Search player or club…" value="${esc(state.filters.q)}">
@@ -380,7 +380,7 @@ function renderPlayers() {
         <option value="ALL">All clubs</option>${clubOptions}
       </select>
       <select class="select" id="horizonFilter">
-        <option value="4">Sort: 4GW SZxP</option>
+        <option value="4">Sort: 4GW Projection</option>
         <option value="1" ${state.filters.horizon==='1'?'selected':''}>Sort: Next GW</option>
         <option value="captain" ${state.filters.horizon==='captain'?'selected':''}>Sort: Captain</option>
         <option value="value" ${state.filters.horizon==='value'?'selected':''}>Sort: 4GW Value</option>
@@ -987,25 +987,75 @@ function renderTransfers() {
   });
 }
 
-function renderMarket() {
-  const rises = [...state.players].sort((a,b)=>b.netTransfers-a.netTransfers).slice(0,20);
-  const falls = [...state.players].sort((a,b)=>a.netTransfers-b.netTransfers).slice(0,20);
-  const injured = state.players.filter(p=>p.news || p.status!=='a').sort((a,b)=>a.xmins-b.xmins).slice(0,30);
+const MARKET_LIMIT = 5;
+const RECENT_DEPARTURE_DAYS = 7;
 
-  const marketRows = (arr,up) => arr.map((p,i)=>`<div class="list-row">
-    <div class="rank">${i+1}</div>
-    <div class="list-main"><b>${esc(p.web_name)}</b><div>${p.teamCode} · ${p.pos} · ${money(p.now_cost)} · ${fmt(p.selected_by_percent)}% owned</div></div>
-    <div class="${up?'delta-up':'delta-down'}">${p.netTransfers>0?'+':''}${p.netTransfers.toLocaleString()}</div>
-  </div>`).join('');
+function parseNewsTime(p) {
+  const ms = Date.parse(p?.news_added || '');
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function newsAgeDays(p) {
+  const ms = parseNewsTime(p);
+  return ms ? Math.max(0, (Date.now() - ms) / 86400000) : Infinity;
+}
+
+function isCurrentMarketPlayer(p) {
+  // FPL keeps departed/unavailable players in bootstrap for a while. Keep them
+  // out of normal market cards; a just-departed player may remain relevant to
+  // transfer-out activity for a short grace window only.
+  return p?.status !== 'u';
+}
+
+function isTransferOutRelevant(p) {
+  if (isCurrentMarketPlayer(p)) return true;
+  return Boolean(p?.news) && newsAgeDays(p) <= RECENT_DEPARTURE_DAYS;
+}
+
+function latestNewsPlayers(players) {
+  return players
+    .filter(p => isCurrentMarketPlayer(p) && (p.news || p.status !== 'a'))
+    .sort((a,b) => {
+      const freshness = parseNewsTime(b) - parseNewsTime(a);
+      if (freshness) return freshness;
+      const chanceA = a.chance_of_playing_next_round == null ? 100 : Number(a.chance_of_playing_next_round);
+      const chanceB = b.chance_of_playing_next_round == null ? 100 : Number(b.chance_of_playing_next_round);
+      if (chanceA !== chanceB) return chanceA - chanceB;
+      return Number(a.xmins || 0) - Number(b.xmins || 0);
+    })
+    .slice(0, MARKET_LIMIT);
+}
+
+function renderMarket() {
+  const current = state.players.filter(isCurrentMarketPlayer);
+  const mostIn = [...current]
+    .sort((a,b)=>Number(b.transfers_in_event||0)-Number(a.transfers_in_event||0))
+    .slice(0,MARKET_LIMIT);
+  const mostOut = state.players
+    .filter(isTransferOutRelevant)
+    .sort((a,b)=>Number(b.transfers_out_event||0)-Number(a.transfers_out_event||0))
+    .slice(0,MARKET_LIMIT);
+  const injured = latestNewsPlayers(state.players);
+
+  const marketRows = (arr,direction) => arr.map((p,i)=>{
+    const transfers = direction === 'in'
+      ? Number(p.transfers_in_event || 0)
+      : Number(p.transfers_out_event || 0);
+    return `<div class="list-row">
+      <div class="rank">${i+1}</div>
+      <div class="list-main"><b>${esc(p.web_name)}</b><div>${p.teamCode} · ${p.pos} · ${money(p.now_cost)} · ${fmt(p.selected_by_percent)}% owned</div></div>
+      <div class="${direction==='in'?'delta-up':'delta-down'}">${direction==='in'?'+':'−'}${transfers.toLocaleString()}</div>
+    </div>`;
+  }).join('');
 
   $('#market').innerHTML = `
-    <div class="hero"><div class="eyebrow">Market Watch</div><h1>Price pressure, injuries and availability.</h1><p class="subtext">Current FPL prices plus transfer momentum and SZxP impact.</p></div>
+    <div class="hero"><div class="eyebrow">Market Watch</div><h1>Price pressure, injuries and availability.</h1><p class="subtext">Current FPL prices plus transfer momentum and player availability.</p></div>
     <div class="grid two">
-      <div class="card"><div class="section-head"><h2>Most Bought</h2><span class="stat-note">GW transfers</span></div>${marketRows(rises,true)}</div>
-      <div class="card"><div class="section-head"><h2>Most Sold</h2><span class="stat-note">GW transfers</span></div>${marketRows(falls,false)}</div>
+      <div class="card"><div class="section-head"><h2>Most Transferred In</h2><span class="stat-note">Top ${MARKET_LIMIT} · current GW</span></div>${marketRows(mostIn,'in')}</div>
+      <div class="card"><div class="section-head"><h2>Most Transferred Out</h2><span class="stat-note">Top ${MARKET_LIMIT} · current GW</span></div>${marketRows(mostOut,'out')}</div>
     </div>
     <div class="section card">
-      <div class="section-head"><h2>Injury / News Szentre</h2><span class="stat-note">Latest FPL flags</span></div>
+      <div class="section-head"><h2>Injury / News Szentre</h2><span class="stat-note">Latest ${MARKET_LIMIT} current FPL flags</span></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Player</th><th>Price</th><th>Chance</th><th>xMins</th><th>Next xP</th><th>4GW xP</th><th>News</th></tr></thead>
         <tbody>${injured.map(p=>`<tr>
@@ -1013,10 +1063,10 @@ function renderMarket() {
           <td>${money(p.now_cost)}</td>
           <td>${p.chance_of_playing_next_round == null ? '—' : p.chance_of_playing_next_round+'%'}</td>
           <td>${p.xmins}</td><td class="xp">${fmt(p.xp[0])}</td><td>${fmt(p.xp4)}</td>
-          <td style="white-space:normal;min-width:280px">${esc(p.news || p.status)}</td>
+          <td style="white-space:normal;min-width:280px">${esc(p.news || 'Availability flag')}</td>
         </tr>`).join('')}</tbody>
       </table></div>
-      <p class="model-note">Confirmed price is official FPL data. Rise/fall risk remains a heuristic because the exact price algorithm is unpublished.</p>
+      <p class="model-note">Lists show five names only. Injury/news is ordered by the latest official FPL update and excludes departed/unavailable players. Transfer-in/out counts are official current-Gameweek totals.</p>
     </div>`;
 }
 
@@ -1045,7 +1095,7 @@ function openView(name) {
 }
 
 function renderLoading() {
-  $('#overview').innerHTML = `<div class="hero"><div class="eyebrow">Fantaszy Szentre</div><h1>Updating SZxP intelligence…</h1></div><div class="grid stats">${'<div class="skeleton"></div>'.repeat(4)}</div>`;
+  $('#overview').innerHTML = `<div class="hero"><div class="eyebrow">Fantaszy Szentre</div><h1>Updating engine intelligence…</h1></div><div class="grid stats">${'<div class="skeleton"></div>'.repeat(4)}</div>`;
 }
 
 async function init(force=false) {
@@ -1096,8 +1146,8 @@ async function init(force=false) {
     enrichPlayers();
     window.FS30?.ensure?.();
 
-    const version = state.projectionData?.model_version || 'FPL data';
-    setApiStatus(true,version);
+    const version = state.projectionData?.model_version || 'internal';
+    setApiStatus(true,'FS Engine');
 
     // Player Szentre / More can paint immediately. They are independent of
     // personalised portfolio loading, so never leave those tabs blank while
@@ -1114,7 +1164,7 @@ async function init(force=false) {
     if(active==='market') renderMarket();
     window.dispatchEvent(new CustomEvent('fs:view-change',{detail:{name:active,initial:true}}));
     window.dispatchEvent(new CustomEvent('fs:refresh-complete',{detail:{force,version}}));
-    toast(`${version} updated`);
+    toast('Fantaszy Szentre updated');
   } catch(e) {
     console.error(e);
     setApiStatus(false,'Data error');
