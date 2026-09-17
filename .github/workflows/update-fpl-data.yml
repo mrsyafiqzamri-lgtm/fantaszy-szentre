@@ -14,6 +14,7 @@ on:
       - 'scripts/build_szxp30.py'
       - 'scripts/build_accuracy30.py'
       - 'scripts/promote_szxp30.py'
+      - 'scripts/build_web_bundle.py'
       - 'data/intelligence/manual-signals.json'
       - 'data-adapter.js'
       - 'app.js'
@@ -69,8 +70,11 @@ jobs:
       - name: Score SZxP 3.0 production accuracy
         run: python scripts/build_accuracy30.py
 
-      - name: Promote SZxP 3.0 to canonical website feed
+      - name: Promote engine output to canonical website feed
         run: python scripts/promote_szxp30.py
+
+      - name: Rebuild browser data bundles
+        run: python scripts/build_web_bundle.py
 
       - name: Commit refreshed data and prediction snapshots
         run: |
