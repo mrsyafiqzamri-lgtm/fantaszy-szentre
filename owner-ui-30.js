@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION='20260913-owner30-personal4';
+  const VERSION='20260917-owner30-production-parity1';
   const KEYS={
     home:'fs30:homeTeam',
     team:'fs30:teamHub',
@@ -287,21 +287,24 @@
 
   async function accuracy(){
     const target=$('#fs30Accuracy');if(!target)return;
-    target.innerHTML='<div class="fs30-note">Loading genuine locked accuracy…</div>';
-    const [a30,a22]=await Promise.all([
-      fetchJson('data/accuracy-3.0.json').catch(()=>({gameweeks:[]})),
-      fetchJson('data/accuracy-2.2.json').catch(()=>({gameweeks:[]}))
-    ]);
-    const last=a=>[...(a.gameweeks||[])].sort((x,y)=>n(x.gw)-n(y.gw)).at(-1)||null;
-    const p=last(a30),s=last(a22);
-    target.innerHTML=`<div class="fs-accgrid"><div class="fs-card"><div class="fs-k">3.0 Latest</div><div class="fs-v">${p?`GW${p.gw}`:'Waiting'}</div></div><div class="fs-card"><div class="fs-k">3.0 Player MAE</div><div class="fs-v">${p?.relevant?.mae==null?'—':fmt(p.relevant.mae,3)}</div></div><div class="fs-card"><div class="fs-k">2.2 Shadow MAE</div><div class="fs-v">${s?.relevant?.mae==null?'—':fmt(s.relevant.mae,3)}</div></div><div class="fs-card"><div class="fs-k">3.0 Team MAE</div><div class="fs-v">${p?.team_mae==null?'—':fmt(p.team_mae,3)}</div></div></div>`;
+    target.innerHTML='<div class="fs30-note">Loading genuine locked production accuracy…</div>';
+    const prod=await fetchJson('data/accuracy-3.0.json').catch(()=>({gameweeks:[]}));
+    const rows=[...(prod.gameweeks||[])].sort((a,b)=>n(a.gw)-n(b.gw));
+    const p=rows.at(-1)||null;
+    const cumulative=prod.cumulative||prod.season||{};
+    target.innerHTML=`<div class="fs-accgrid">
+      <div class="fs-card"><div class="fs-k">Production Model</div><div class="fs-v">3.0</div><div class="fs-s">Commercial Core only</div></div>
+      <div class="fs-card"><div class="fs-k">Latest Locked GW</div><div class="fs-v">${p?`GW${p.gw}`:'Waiting'}</div><div class="fs-s">genuine pre-deadline snapshot</div></div>
+      <div class="fs-card"><div class="fs-k">Player MAE</div><div class="fs-v">${p?.relevant?.mae==null?'—':fmt(p.relevant.mae,3)}</div><div class="fs-s">latest production GW</div></div>
+      <div class="fs-card"><div class="fs-k">Team MAE</div><div class="fs-v">${p?.team_mae==null?'—':fmt(p.team_mae,3)}</div><div class="fs-s">latest production GW</div></div>
+    </div>`;
   }
 
   function moreMarkup(){
     return `<div class="fs-head"><div><div class="eyebrow">More</div><h1>3.0 audit & tools</h1></div></div>
       ${contractBlock()}
       <div class="fs-more">
-        <div class="fs-card"><h2>Model comparison</h2><p>Genuine locked 3.0 accuracy versus the 2.2 shadow benchmark.</p><button class="fs-morebtn" id="fs30AccuracyBtn">View comparison</button></div>
+        <div class="fs-card"><h2>Production accuracy</h2><p>Genuine locked accuracy for the same SZxP 3.0 Commercial Core used by the monetised app.</p><button class="fs-morebtn" id="fs30AccuracyBtn">View accuracy</button></div>
         <div class="fs-card"><h2>Captain logic</h2><p>Highest calibrated xP wins unless the gap is within ${FS30?.captainCloseXp?.toFixed?.(2)||'0.30'} xP, where Captain Szentre resolves the close call.</p><button class="fs-morebtn" data-info="captain">Explain</button></div>
         <div class="fs-card"><h2>Testing contract</h2><p>Visible recommendations are withheld if the canonical feed is not SZxP 3.0 Commercial Core.</p><button class="fs-morebtn" data-info="contract">Explain</button></div>
         <div class="fs-card fs30-match-card"><h2>Match Predictions</h2>${window.FSMatch30?.markup?.()||'<div class="fs30-empty">Match engine loading…</div>'}</div>
@@ -334,7 +337,7 @@
       transfer:['Transfer Szentre 3.0','Route search uses the current reconstructed permanent squad and 3.0 player projections. The final action is scored with next-GW gain, four-GW gain, hit cost, fixture swing, minutes/availability and squad flexibility. ROLL is a valid answer.'],
       chip:['Chip Szentre 3.0','Wildcard, Free Hit, Bench Boost and Triple Captain are scored separately using the commercial chip weights. Only the strongest opportunity is allowed, and NO CHIP remains valid if nothing clears the play threshold.'],
       captain:['Captain selection','Captaincy doubles one player’s actual FPL points, so calibrated next-GW xP is the primary decision. Captain Szentre is a close-call quality check, not a licence to ignore a clearly higher xP.'],
-      contract:['3.0 testing contract','The owner test surface does not silently fall back to 2.2, 2.1 or FPL ep_next. If the canonical production metadata is not SZxP 3.0 Commercial Core, recommendations are withheld.']
+      contract:['3.0 production contract','Only SZxP 3.0 Commercial Core is allowed to power visible recommendations. Internal raw or validation feeds are never selectable and are never shown as an alternative model.']
     };
     return map[key]||['Fantaszy Szentre','Extra detail is kept here so the weekly UI stays clean.'];
   }

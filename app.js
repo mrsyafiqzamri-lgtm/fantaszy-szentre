@@ -335,7 +335,7 @@ function renderOverview() {
       </div>
 
       <div class="card">
-        <div class="section-head"><h2>SZxP 2.1</h2><span class="stat-note">${state.players.length} players</span></div>
+        <div class="section-head"><h2>SZxP 3.0</h2><span class="stat-note">${state.players.length} players</span></div>
         <p class="subtext">Expected minutes + shrunk xG/xA + team attack/defence strength + clean-sheet probability + saves + bonus + defensive contributions when available + next-GW official FPL calibration.</p>
         <div class="notice">Penalty and set-piece bonuses are deliberately excluded until the role is independently verified. We would rather under-model than invent data.</div>
         <div class="model-note">Before every deadline, GitHub saves the latest projection snapshot. After that Gameweek finishes, the model records MAE, bias and correlation so we can calibrate SZxP using actual evidence.</div>
@@ -368,7 +368,7 @@ function renderPlayers() {
     <div class="hero">
       <div class="eyebrow">Player Szentre</div>
       <h1>Every player. One projection table.</h1>
-      <p class="subtext">Full FPL pool ranked by SZxP 2.1. Switch between next-GW, four-GW, value and captaincy views.</p>
+      <p class="subtext">Full FPL pool ranked by SZxP 3.0. Switch between next-GW, four-GW, value and captaincy views.</p>
     </div>
     <div class="controls">
       <input class="input" id="playerSearch" placeholder="Search player or club…" value="${esc(state.filters.q)}">
